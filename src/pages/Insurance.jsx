@@ -227,12 +227,12 @@ export default function Insurance() {
         <h2 className="text-xl font-bold dark:text-white flex items-center gap-2">
           <HiOutlineShieldCheck className="w-6 h-6 text-indigo-500" /> Insurance
         </h2>
-        <div className="flex gap-2">
-          <button onClick={() => setShowChangePinModal(true)} className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors">
+        <div className="flex gap-1.5">
+          <button onClick={() => setShowChangePinModal(true)} className="px-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors">
             Change PIN
           </button>
-          <button onClick={openAdd} className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white text-sm rounded-xl hover:bg-indigo-700 transition-colors">
-            <HiPlus className="w-4 h-4" /> Add Policy
+          <button onClick={openAdd} className="flex items-center gap-1 px-2 py-1 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700 transition-colors">
+            <HiPlus className="w-3.5 h-3.5" /> Add
           </button>
         </div>
       </div>
