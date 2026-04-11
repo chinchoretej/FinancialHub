@@ -33,15 +33,15 @@ async function getOrCreateFolder(token) {
 }
 
 export function useGoogleDrive() {
-  const { googleToken, connectGoogleDrive } = useAuth();
+  const { googleToken, refreshGoogleToken } = useAuth();
 
   const getToken = useCallback(async () => {
     if (googleToken) {
       const res = await fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + googleToken);
       if (res.ok) return googleToken;
     }
-    return connectGoogleDrive();
-  }, [googleToken, connectGoogleDrive]);
+    return refreshGoogleToken();
+  }, [googleToken, refreshGoogleToken]);
 
   const uploadFile = useCallback(async (file) => {
     const token = await getToken();
