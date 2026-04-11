@@ -4,23 +4,22 @@ import Card from '../components/Card';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
 import { HiOutlineBellAlert, HiPlus, HiTrash, HiCheckCircle, HiClock } from 'react-icons/hi2';
-import { format, differenceInDays, parseISO } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 
-const emptyBill = { name: '', amount: '', dueDay: '', category: 'Utility' };
+const emptyBill = { name: '', dueDay: '', category: 'Utility' };
 const BILL_CATEGORIES = ['Utility', 'Rent', 'Insurance', 'Subscription', 'EMI', 'Credit Card', 'Other'];
 
 export default function Bills() {
-  const { data: bills, add, remove, update } = useCollection('bills', 'createdAt');
+  const { data: bills, add, remove } = useCollection('bills', 'createdAt');
   const { data: billPayments, add: addPayment } = useCollection('billPayments', 'createdAt');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyBill);
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
-  const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
   const handleSave = async () => {
-    if (!form.name || !form.amount || !form.dueDay) return;
+    if (!form.name || !form.dueDay) return;
     await add(form);
     setForm(emptyBill);
     setShowModal(false);
@@ -29,8 +28,7 @@ export default function Bills() {
   const paidMap = useMemo(() => {
     const map = {};
     billPayments.forEach(p => {
-      const key = `${p.billId}_${p.month}`;
-      map[key] = p;
+      map[`${p.billId}_${p.month}`] = p;
     });
     return map;
   }, [billPayments]);
@@ -66,21 +64,7 @@ export default function Bills() {
       .sort((a, b) => a.daysUntil - b.daysUntil);
   }, [bills, selectedMonth, paidMap]);
 
-  const { totalBills, paidCount, unpaidCount, totalAmount, paidAmount } = useMemo(() => {
-    const totalBills = bills.length;
-    let paidCount = 0;
-    let paidAmount = 0;
-    let totalAmount = 0;
-    bills.forEach(b => {
-      const amt = Number(b.amount) || 0;
-      totalAmount += amt;
-      if (isPaid(b.id)) {
-        paidCount++;
-        paidAmount += amt;
-      }
-    });
-    return { totalBills, paidCount, unpaidCount: totalBills - paidCount, totalAmount, paidAmount };
-  }, [bills, paidMap, selectedMonth]);
+  const paidCount = useMemo(() => bills.filter(b => isPaid(b.id)).length, [bills, paidMap, selectedMonth]);
 
   return (
     <div className="space-y-4">
@@ -102,7 +86,7 @@ export default function Bills() {
           className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
         />
         <div className="text-xs text-gray-500 dark:text-gray-400">
-          {paidCount}/{totalBills} paid &middot; {fmt(paidAmount)}/{fmt(totalAmount)}
+          {paidCount}/{bills.length} paid
         </div>
       </div>
 
@@ -117,7 +101,7 @@ export default function Bills() {
               <div key={b.id} className="flex justify-between text-xs">
                 <span className="text-amber-700 dark:text-amber-300">{b.name}</span>
                 <span className={`font-medium ${b.daysUntil < 0 ? 'text-red-600' : b.daysUntil <= 2 ? 'text-amber-600' : 'text-gray-600 dark:text-gray-300'}`}>
-                  {b.daysUntil < 0 ? `${Math.abs(b.daysUntil)}d overdue` : b.daysUntil === 0 ? 'Due today' : `${b.daysUntil}d left`} &middot; {fmt(b.amount)}
+                  {b.daysUntil < 0 ? `${Math.abs(b.daysUntil)}d overdue` : b.daysUntil === 0 ? 'Due today' : `${b.daysUntil}d left`}
                 </span>
               </div>
             ))}
@@ -131,7 +115,6 @@ export default function Bills() {
         <div className="space-y-2">
           {bills.map(b => {
             const paid = isPaid(b.id);
-            const [y, m] = selectedMonth.split('-').map(Number);
             const dayNum = Number(b.dueDay) || 1;
             const dueStr = `${selectedMonth}-${String(dayNum).padStart(2, '0')}`;
             return (
@@ -153,12 +136,9 @@ export default function Bills() {
                       <span className={`text-sm font-medium ${paid ? 'line-through text-gray-400' : 'dark:text-white'}`}>{b.name}</span>
                       <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-300 rounded-full">{b.category}</span>
                     </div>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <span className="text-sm font-semibold dark:text-gray-200">{fmt(b.amount)}</span>
-                      <span className="text-xs text-gray-400 flex items-center gap-1">
-                        <HiClock className="w-3 h-3" /> Due: {dueStr}
-                      </span>
-                    </div>
+                    <span className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                      <HiClock className="w-3 h-3" /> Due: {dueStr}
+                    </span>
                   </div>
                   <button onClick={() => remove(b.id)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg shrink-0">
                     <HiTrash className="w-4 h-4 text-red-400" />
@@ -183,11 +163,6 @@ export default function Bills() {
               className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white">
               {BILL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">Amount</label>
-            <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white" />
           </div>
           <div>
             <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">Due Day of Month (1-31)</label>
