@@ -12,7 +12,6 @@ import {
   HiOutlineDocumentText,
   HiOutlineChatBubbleBottomCenterText,
   HiOutlineBellAlert,
-  HiOutlineQrCode,
   HiArrowRightOnRectangle,
   HiSun,
   HiMoon,
@@ -25,7 +24,7 @@ const tabs = [
   { to: '/bills', icon: HiOutlineBellAlert, label: 'Bills' },
   { to: '/dashboard', icon: HiOutlineHome, label: 'Home' },
   { to: '/loan', icon: HiOutlineBanknotes, label: 'Loan' },
-  { to: '/upi', icon: HiOutlineQrCode, label: 'UPI' },
+  { to: '/sms', icon: HiOutlineChatBubbleBottomCenterText, label: 'SMS' },
 ];
 
 export default function Layout() {
@@ -136,11 +135,6 @@ export default function Layout() {
               <button onClick={() => goTo('/documents')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left">
                 <HiOutlineDocumentText className="w-5 h-5 text-gray-400 dark:text-gray-500" />
                 <span className="flex-1 dark:text-gray-200">Documents</span>
-                <HiChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-              </button>
-              <button onClick={() => goTo('/sms')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left">
-                <HiOutlineChatBubbleBottomCenterText className="w-5 h-5 text-gray-400 dark:text-gray-500" />
-                <span className="flex-1 dark:text-gray-200">SMS Parser</span>
                 <HiChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
               </button>
             </div>
