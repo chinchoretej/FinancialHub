@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Only the single allowed user can read/write any document
+    match /{document=**} {
+      allow read, write: if request.auth != null
+        && request.auth.token.email == "chinchoretej@gmail.com";
+    }
+  }
+}
