@@ -7,3 +7,37 @@
     @apply bg-gray-50 text-gray-900 antialiased dark:bg-gray-900 dark:text-gray-100;
   }
 }
+
+/* QR scanner animation */
+@keyframes scanner-line {
+  0%, 100% { top: 8px; }
+  50% { top: calc(100% - 10px); }
+}
+
+.animate-scanner-line {
+  animation: scanner-line 2s ease-in-out infinite;
+}
+
+/* Hide html5-qrcode default UI inside fullscreen scanner */
+#qr-reader {
+  border: none !important;
+}
+#qr-reader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+#qr-reader img[alt="Info icon"],
+#qr-reader img[alt="Camera based scan"],
+#qr-reader__dashboard_section,
+#qr-reader__status_span,
+#qr-reader__header_message {
+  display: none !important;
+}
+#qr-reader__scan_region {
+  min-height: 100% !important;
+}
+#qr-reader__scan_region > br,
+#qr-reader__scan_region > img {
+  display: none !important;
+}
