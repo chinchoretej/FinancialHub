@@ -13,6 +13,7 @@ import {
   HiOutlineChatBubbleBottomCenterText,
   HiOutlineBellAlert,
   HiOutlineChartBarSquare,
+  HiOutlineShieldCheck,
   HiArrowRightOnRectangle,
   HiSun,
   HiMoon,
@@ -148,6 +149,11 @@ export default function Layout() {
               <button onClick={() => goTo('/investments')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left">
                 <HiOutlineChartBarSquare className="w-5 h-5 text-gray-400 dark:text-gray-500" />
                 <span className="flex-1 dark:text-gray-200">Investments</span>
+                <HiChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
+              </button>
+              <button onClick={() => goTo('/insurance')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left">
+                <HiOutlineShieldCheck className="w-5 h-5 text-gray-400 dark:text-gray-500" />
+                <span className="flex-1 dark:text-gray-200">Insurance Vault</span>
                 <HiChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
               </button>
               <button onClick={() => goTo('/documents')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left">
