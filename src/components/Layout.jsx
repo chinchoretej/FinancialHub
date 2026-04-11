@@ -12,6 +12,7 @@ import {
   HiOutlineDocumentText,
   HiOutlineChatBubbleBottomCenterText,
   HiOutlineBellAlert,
+  HiOutlineChartBarSquare,
   HiArrowRightOnRectangle,
   HiSun,
   HiMoon,
@@ -34,15 +35,17 @@ export default function Layout() {
   const [showSettings, setShowSettings] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [salary, setSalary] = useState('');
+  const [otherIncome, setOtherIncome] = useState('');
   const navigate = useNavigate();
 
   const openSettings = () => {
     setSalary(profile?.monthlySalary || '');
+    setOtherIncome(profile?.otherIncome || '');
     setShowSettings(true);
   };
 
-  const handleSaveSalary = async () => {
-    await saveProfile({ monthlySalary: salary });
+  const handleSaveIncome = async () => {
+    await saveProfile({ monthlySalary: salary, otherIncome });
     setShowSettings(false);
   };
 
@@ -120,10 +123,20 @@ export default function Layout() {
               placeholder="Enter your monthly salary"
               className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
             />
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Used for budget calculations and savings insights on Dashboard</p>
           </div>
+          <div>
+            <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">Other Income</label>
+            <input
+              type="number"
+              value={otherIncome}
+              onChange={e => setOtherIncome(e.target.value)}
+              placeholder="Business, freelancing, etc."
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500">Total income is used for budget calculations on Dashboard</p>
           <button
-            onClick={handleSaveSalary}
+            onClick={handleSaveIncome}
             className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors"
           >
             Save
@@ -132,6 +145,11 @@ export default function Layout() {
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
             <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Tools</p>
             <div className="space-y-1">
+              <button onClick={() => goTo('/investments')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left">
+                <HiOutlineChartBarSquare className="w-5 h-5 text-gray-400 dark:text-gray-500" />
+                <span className="flex-1 dark:text-gray-200">Investments</span>
+                <HiChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
+              </button>
               <button onClick={() => goTo('/documents')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left">
                 <HiOutlineDocumentText className="w-5 h-5 text-gray-400 dark:text-gray-500" />
                 <span className="flex-1 dark:text-gray-200">Documents</span>

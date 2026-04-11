@@ -9,6 +9,7 @@ import Expenses from './pages/Expenses';
 import Documents from './pages/Documents';
 import SmsParse from './pages/SmsParse';
 import Bills from './pages/Bills';
+import Investments from './pages/Investments';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -45,6 +46,7 @@ export default function App() {
               <Route path="bills" element={<Bills />} />
               <Route path="documents" element={<Documents />} />
               <Route path="sms" element={<SmsParse />} />
+              <Route path="investments" element={<Investments />} />
             </Route>
             <Route path="*" element={<Navigate to="/expenses" replace />} />
           </Routes>

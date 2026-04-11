@@ -6,7 +6,7 @@ import EmptyState from '../components/EmptyState';
 import { HiOutlineReceiptPercent, HiPlus, HiTrash, HiMagnifyingGlass, HiXMark } from 'react-icons/hi2';
 import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 
-const CATEGORIES = ['Food', 'Transport', 'Utilities', 'Shopping', 'Health', 'Entertainment', 'Education', 'Rent', 'EMI', 'Bills', 'Other'];
+const CATEGORIES = ['Food', 'Transport', 'Utilities', 'Shopping', 'Health', 'Entertainment', 'Education', 'Rent', 'EMI', 'Bills', 'Investment', 'Other'];
 const PAYMENT_MODES = ['Cash', 'UPI', 'Credit Card', 'Debit Card', 'Net Banking', 'Other'];
 
 const emptyExpense = { date: '', category: 'Food', amount: '', paymentMode: 'UPI', notes: '' };

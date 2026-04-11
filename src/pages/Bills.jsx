@@ -125,6 +125,13 @@ export default function Bills() {
 
   const paidCount = useMemo(() => bills.filter(b => isPaid(b.id)).length, [bills, paidMap, selectedMonth]);
 
+  const totalPaidAmount = useMemo(() => {
+    return bills.reduce((sum, b) => {
+      const amt = getPaidAmount(b.id);
+      return sum + (amt ? Number(amt) : 0);
+    }, 0);
+  }, [bills, paidMap, selectedMonth]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -145,7 +152,7 @@ export default function Bills() {
           className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
         />
         <div className="text-xs text-gray-500 dark:text-gray-400">
-          {paidCount}/{bills.length} paid
+          {paidCount}/{bills.length} paid{totalPaidAmount > 0 && <> &middot; Total: <span className="font-semibold text-green-600 dark:text-green-400">{fmt(totalPaidAmount)}</span></>}
         </div>
       </div>
 

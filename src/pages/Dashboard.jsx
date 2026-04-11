@@ -41,18 +41,20 @@ export default function Dashboard() {
     const monthlyExpenseTotal = monthlyExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
     const profileSalary = Number(profile?.monthlySalary) || 0;
+    const otherIncome = Number(profile?.otherIncome) || 0;
     const salaryDocs = documents.filter(d => d.salaryAmount);
     const docSalary = salaryDocs.length > 0 ? Number(salaryDocs[0].salaryAmount) || 0 : 0;
     const latestSalary = profileSalary || docSalary;
+    const totalIncome = latestSalary + otherIncome;
 
-    const budgetUsedPct = latestSalary > 0 ? ((monthlyExpenseTotal / latestSalary) * 100) : 0;
+    const budgetUsedPct = totalIncome > 0 ? ((monthlyExpenseTotal / totalIncome) * 100) : 0;
 
     return {
       totalSanctioned, totalDisbursed, totalRemaining,
       totalDemanded, totalPaidOnDemands,
       pendingDemands: pendingDemands.length,
-      monthlyExpenseTotal, latestSalary,
-      savings: latestSalary - monthlyExpenseTotal,
+      monthlyExpenseTotal, latestSalary, otherIncome, totalIncome,
+      savings: totalIncome - monthlyExpenseTotal,
       budgetUsedPct,
     };
   }, [loans, demands, payments, expenses, documents, profile]);
@@ -88,16 +90,16 @@ export default function Dashboard() {
         <StatCard label="Total Paid" value={fmt(stats.totalPaidOnDemands)} color="text-green-600" />
         <StatCard label="Pending Demands" value={stats.pendingDemands} color="text-amber-600" />
         <StatCard label="Monthly Expenses" value={fmt(stats.monthlyExpenseTotal)} color="text-indigo-600" />
-        <StatCard label="Monthly Salary" value={fmt(stats.latestSalary)} color="text-blue-600" />
+        <StatCard label="Total Income" value={fmt(stats.totalIncome)} color="text-blue-600" />
         <StatCard label="Savings" value={fmt(stats.savings)} color={stats.savings >= 0 ? 'text-green-600' : 'text-red-600'} />
       </div>
 
-      {stats.latestSalary > 0 && (
+      {stats.totalIncome > 0 && (
         <Card>
           <h3 className="text-sm font-semibold mb-2 dark:text-white">Budget Usage</h3>
           <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
             <span>Spent: {fmt(stats.monthlyExpenseTotal)}</span>
-            <span>Salary: {fmt(stats.latestSalary)}</span>
+            <span>Income: {fmt(stats.totalIncome)}{stats.otherIncome > 0 && ` (Salary ${fmt(stats.latestSalary)} + Other ${fmt(stats.otherIncome)})`}</span>
           </div>
           <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
             <div
@@ -106,7 +108,7 @@ export default function Dashboard() {
             />
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-            {stats.budgetUsedPct.toFixed(1)}% of salary spent
+            {stats.budgetUsedPct.toFixed(1)}% of income spent
           </p>
         </Card>
       )}
