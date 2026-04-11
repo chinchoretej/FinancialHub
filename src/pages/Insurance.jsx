@@ -290,43 +290,31 @@ export default function Insurance() {
 
       {/* Add / Edit Policy */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editId ? 'Edit Policy' : 'Add Policy'}>
-        <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
+        <div className="space-y-4 max-h-[65vh] overflow-y-auto -mr-2 pr-2">
           <SectionLabel text="Policy Info" />
           <FormInput label="Policy Name *" value={form.policyName} onChange={v => set('policyName', v)} placeholder="e.g. Jeevan Anand 815" />
-          <div className="grid grid-cols-2 gap-3">
-            <FormSelect label="Type" value={form.type} onChange={v => set('type', v)} options={POLICY_TYPES} />
-            <FormInput label="Policy Number *" value={form.policyNumber} onChange={v => set('policyNumber', v)} placeholder="e.g. 12345678" />
-          </div>
+          <FormSelect label="Type" value={form.type} onChange={v => set('type', v)} options={POLICY_TYPES} />
+          <FormInput label="Policy Number *" value={form.policyNumber} onChange={v => set('policyNumber', v)} placeholder="e.g. 12345678" />
           <FormInput label="Insurance Provider" value={form.provider} onChange={v => set('provider', v)} placeholder="e.g. LIC of India" />
 
           <SectionLabel text="Financial" />
-          <div className="grid grid-cols-2 gap-3">
-            <FormInput label="Sum Assured" type="number" value={form.sumAssured} onChange={v => set('sumAssured', v)} />
-            <FormInput label="Premium Amount" type="number" value={form.premiumAmount} onChange={v => set('premiumAmount', v)} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <FormSelect label="Premium Frequency" value={form.premiumFrequency} onChange={v => set('premiumFrequency', v)} options={PREMIUM_FREQ} />
-            <FormInput label="Premium Due Date" value={form.premiumDueDate} onChange={v => set('premiumDueDate', v)} placeholder="e.g. 15th March" />
-          </div>
+          <FormInput label="Sum Assured" type="number" value={form.sumAssured} onChange={v => set('sumAssured', v)} placeholder="e.g. 500000" />
+          <FormInput label="Premium Amount" type="number" value={form.premiumAmount} onChange={v => set('premiumAmount', v)} placeholder="e.g. 12000" />
+          <FormSelect label="Premium Frequency" value={form.premiumFrequency} onChange={v => set('premiumFrequency', v)} options={PREMIUM_FREQ} />
+          <FormInput label="Premium Due Date" value={form.premiumDueDate} onChange={v => set('premiumDueDate', v)} placeholder="e.g. 15th March" />
 
           <SectionLabel text="Dates" />
-          <div className="grid grid-cols-2 gap-3">
-            <FormInput label="Start Date" type="date" value={form.startDate} onChange={v => set('startDate', v)} />
-            <FormInput label="Maturity Date" type="date" value={form.maturityDate} onChange={v => set('maturityDate', v)} />
-          </div>
+          <FormInput label="Start Date" type="date" value={form.startDate} onChange={v => set('startDate', v)} />
+          <FormInput label="Maturity Date" type="date" value={form.maturityDate} onChange={v => set('maturityDate', v)} />
 
           <SectionLabel text="Nominee" />
-          <div className="grid grid-cols-2 gap-3">
-            <FormInput label="Nominee Name" value={form.nomineeName} onChange={v => set('nomineeName', v)} />
-            <FormInput label="Relation" value={form.nomineeRelation} onChange={v => set('nomineeRelation', v)} placeholder="e.g. Wife, Son" />
-          </div>
+          <FormInput label="Nominee Name" value={form.nomineeName} onChange={v => set('nomineeName', v)} placeholder="Full name" />
+          <FormInput label="Relation" value={form.nomineeRelation} onChange={v => set('nomineeRelation', v)} placeholder="e.g. Wife, Son" />
           <FormInput label="Nominee Phone" value={form.nomineePhone} onChange={v => set('nomineePhone', v)} placeholder="Mobile number" />
 
           <SectionLabel text="Agent" />
-          <div className="grid grid-cols-2 gap-3">
-            <FormInput label="Agent Name" value={form.agentName} onChange={v => set('agentName', v)} />
-            <FormInput label="Agent Phone" value={form.agentPhone} onChange={v => set('agentPhone', v)} />
-          </div>
+          <FormInput label="Agent Name" value={form.agentName} onChange={v => set('agentName', v)} placeholder="Agent full name" />
+          <FormInput label="Agent Phone" value={form.agentPhone} onChange={v => set('agentPhone', v)} placeholder="Agent mobile number" />
 
           <SectionLabel text="Additional" />
           <div>
