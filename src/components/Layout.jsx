@@ -52,7 +52,7 @@ export default function Layout() {
 
   const goTo = (path) => {
     setShowSettings(false);
-    navigate(path);
+    navigate(path, { replace: true });
   };
 
   return (
@@ -100,6 +100,7 @@ export default function Layout() {
             <NavLink
               key={to}
               to={to}
+              replace
               className={({ isActive }) =>
                 `flex flex-col items-center py-2 px-3 text-xs transition-colors ${
                   isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
