@@ -1,14 +1,8 @@
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useCollection } from '../hooks/useFirestore';
 import { useUserProfile } from '../hooks/useUserProfile';
 import Card from '../components/Card';
-import {
-  PieChart, Pie, Cell, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
-} from 'recharts';
 import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
-
-const COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444', '#14b8a6'];
 
 export default function Dashboard() {
   const { data: loans } = useCollection('loans', 'createdAt');
@@ -17,6 +11,8 @@ export default function Dashboard() {
   const { data: expenses } = useCollection('expenses', 'date');
   const { data: documents } = useCollection('documents', 'createdAt');
   const { profile } = useUserProfile();
+
+  const [breakdownMonth, setBreakdownMonth] = useState(format(new Date(), 'yyyy-MM'));
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -39,8 +35,7 @@ export default function Dashboard() {
 
     const monthlyExpenses = expenses.filter(e => {
       try {
-        const d = new Date(e.date);
-        return isWithinInterval(d, { start: monthStart, end: monthEnd });
+        return isWithinInterval(new Date(e.date), { start: monthStart, end: monthEnd });
       } catch { return false; }
     });
     const monthlyExpenseTotal = monthlyExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
@@ -49,27 +44,6 @@ export default function Dashboard() {
     const salaryDocs = documents.filter(d => d.salaryAmount);
     const docSalary = salaryDocs.length > 0 ? Number(salaryDocs[0].salaryAmount) || 0 : 0;
     const latestSalary = profileSalary || docSalary;
-
-    const categoryMap = {};
-    monthlyExpenses.forEach(e => {
-      const cat = e.category || 'Other';
-      categoryMap[cat] = (categoryMap[cat] || 0) + (Number(e.amount) || 0);
-    });
-    const categoryData = Object.entries(categoryMap).map(([name, value]) => ({ name, value }));
-
-    const monthlyTrend = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const ms = startOfMonth(d);
-      const me = endOfMonth(d);
-      const total = expenses
-        .filter(e => {
-          try { return isWithinInterval(new Date(e.date), { start: ms, end: me }); }
-          catch { return false; }
-        })
-        .reduce((s, e) => s + (Number(e.amount) || 0), 0);
-      monthlyTrend.push({ month: format(ms, 'MMM'), amount: total });
-    }
 
     const budgetUsedPct = latestSalary > 0 ? ((monthlyExpenseTotal / latestSalary) * 100) : 0;
 
@@ -80,9 +54,28 @@ export default function Dashboard() {
       monthlyExpenseTotal, latestSalary,
       savings: latestSalary - monthlyExpenseTotal,
       budgetUsedPct,
-      categoryData, monthlyTrend,
     };
   }, [loans, demands, payments, expenses, documents, profile]);
+
+  const { categoryData, breakdownTotal } = useMemo(() => {
+    const [y, m] = breakdownMonth.split('-').map(Number);
+    const ms = startOfMonth(new Date(y, m - 1));
+    const me = endOfMonth(new Date(y, m - 1));
+    const filtered = expenses.filter(e => {
+      try { return isWithinInterval(new Date(e.date), { start: ms, end: me }); }
+      catch { return false; }
+    });
+    const catMap = {};
+    filtered.forEach(e => {
+      const cat = e.category || 'Other';
+      catMap[cat] = (catMap[cat] || 0) + (Number(e.amount) || 0);
+    });
+    const categoryData = Object.entries(catMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+    const breakdownTotal = filtered.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    return { categoryData, breakdownTotal };
+  }, [expenses, breakdownMonth]);
 
   const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
@@ -118,38 +111,43 @@ export default function Dashboard() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card>
-          <h3 className="text-sm font-semibold mb-3 dark:text-white">Expense Breakdown</h3>
-          {stats.categoryData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={stats.categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                  {stats.categoryData.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v) => fmt(v)} />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-xs text-gray-400 text-center py-8">No expenses this month</p>
-          )}
-        </Card>
-
-        <Card>
-          <h3 className="text-sm font-semibold mb-3 dark:text-white">Monthly Trend</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={stats.monthlyTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-              <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip formatter={(v) => fmt(v)} />
-              <Bar dataKey="amount" fill="#6366f1" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold dark:text-white">Expense Breakdown</h3>
+          <input
+            type="month"
+            value={breakdownMonth}
+            onChange={e => setBreakdownMonth(e.target.value)}
+            className="px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+          />
+        </div>
+        {categoryData.length > 0 ? (
+          <div>
+            <div className="space-y-2">
+              {categoryData.map(c => (
+                <div key={c.name} className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{c.name}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-24 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-500 rounded-full"
+                        style={{ width: `${breakdownTotal ? (c.value / breakdownTotal) * 100 : 0}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-medium text-gray-900 dark:text-white w-24 text-right">{fmt(c.value)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+              <span className="text-sm font-semibold dark:text-white">Total</span>
+              <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{fmt(breakdownTotal)}</span>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 text-center py-6">No expenses for this month</p>
+        )}
+      </Card>
 
       <Card>
         <h3 className="text-sm font-semibold mb-3 dark:text-white">Loan: Disbursed vs Demanded</h3>
