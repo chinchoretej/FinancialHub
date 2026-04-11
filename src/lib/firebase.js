@@ -16,9 +16,9 @@ export const auth = getAuth(app);
 setPersistence(auth, browserLocalPersistence);
 export const db = getFirestore(app);
 
+// Google provider only used for Drive access on Documents page
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
-googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const ALLOWED_EMAILS = (import.meta.env.VITE_ALLOWED_EMAILS || '').split(',').map(e => e.trim().toLowerCase());
 

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import {
   onAuthStateChanged,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
   GoogleAuthProvider,
@@ -9,14 +10,6 @@ import { auth, googleProvider, isAllowedEmail } from '../lib/firebase';
 
 const AuthContext = createContext(null);
 const TOKEN_KEY = 'fh_google_access_token';
-
-function saveToken(result, setGoogleToken) {
-  const credential = GoogleAuthProvider.credentialFromResult(result);
-  if (credential?.accessToken) {
-    setGoogleToken(credential.accessToken);
-    localStorage.setItem(TOKEN_KEY, credential.accessToken);
-  }
-}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -29,32 +22,29 @@ export function AuthProvider({ children }) {
         setUser(firebaseUser);
       } else {
         setUser(null);
-        setGoogleToken(null);
-        localStorage.removeItem(TOKEN_KEY);
       }
       setLoading(false);
     });
     return unsub;
   }, []);
 
-  const login = useCallback(async () => {
-    const result = await signInWithPopup(auth, googleProvider);
-    if (!isAllowedEmail(result.user.email)) {
-      await signOut(auth);
-      throw new Error('Unauthorized. Your account is not allowed to access this app.');
+  const login = useCallback(async (email, password) => {
+    if (!isAllowedEmail(email)) {
+      throw new Error('Unauthorized email address');
     }
-    saveToken(result, setGoogleToken);
-    return result;
+    return signInWithEmailAndPassword(auth, email, password);
   }, []);
 
-  const refreshGoogleToken = useCallback(async () => {
+  // Separate Google popup only for Drive token (used on Documents page)
+  const connectGoogleDrive = useCallback(async () => {
     const result = await signInWithPopup(auth, googleProvider);
-    saveToken(result, setGoogleToken);
     const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('Could not get Google access token');
+    if (credential?.accessToken) {
+      setGoogleToken(credential.accessToken);
+      localStorage.setItem(TOKEN_KEY, credential.accessToken);
+      return credential.accessToken;
     }
-    return credential.accessToken;
+    throw new Error('Could not get Google Drive access token');
   }, []);
 
   const logout = useCallback(async () => {
@@ -64,7 +54,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, googleToken, refreshGoogleToken }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, googleToken, connectGoogleDrive }}>
       {children}
     </AuthContext.Provider>
   );

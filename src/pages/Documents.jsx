@@ -10,7 +10,7 @@ import { HiOutlineDocumentText, HiPlus, HiTrash, HiEye, HiArrowTopRightOnSquare,
 export default function Documents() {
   const { data: documents, add, remove } = useCollection('documents', 'createdAt');
   const { uploadFile, deleteFile } = useGoogleDrive();
-  const { googleToken, refreshGoogleToken } = useAuth();
+  const { googleToken, connectGoogleDrive } = useAuth();
   const [showUpload, setShowUpload] = useState(false);
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -78,7 +78,7 @@ export default function Documents() {
               <p className="text-xs text-amber-600 mt-0.5">Reconnect to upload or delete documents</p>
             </div>
             <button
-              onClick={refreshGoogleToken}
+              onClick={connectGoogleDrive}
               className="flex items-center gap-1 px-3 py-1.5 bg-amber-100 text-amber-700 text-sm rounded-lg hover:bg-amber-200 transition-colors"
             >
               <HiArrowPath className="w-4 h-4" /> Connect
