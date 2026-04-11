@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useCollection } from '../hooks/useFirestore';
+import { useUserProfile } from '../hooks/useUserProfile';
 import Card from '../components/Card';
 import {
   PieChart, Pie, Cell, ResponsiveContainer,
@@ -15,6 +16,7 @@ export default function Dashboard() {
   const { data: payments } = useCollection('payments', 'createdAt');
   const { data: expenses } = useCollection('expenses', 'date');
   const { data: documents } = useCollection('documents', 'createdAt');
+  const { profile } = useUserProfile();
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -43,8 +45,10 @@ export default function Dashboard() {
     });
     const monthlyExpenseTotal = monthlyExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
+    const profileSalary = Number(profile?.monthlySalary) || 0;
     const salaryDocs = documents.filter(d => d.salaryAmount);
-    const latestSalary = salaryDocs.length > 0 ? Number(salaryDocs[0].salaryAmount) || 0 : 0;
+    const docSalary = salaryDocs.length > 0 ? Number(salaryDocs[0].salaryAmount) || 0 : 0;
+    const latestSalary = profileSalary || docSalary;
 
     const categoryMap = {};
     monthlyExpenses.forEach(e => {
@@ -67,34 +71,56 @@ export default function Dashboard() {
       monthlyTrend.push({ month: format(ms, 'MMM'), amount: total });
     }
 
+    const budgetUsedPct = latestSalary > 0 ? ((monthlyExpenseTotal / latestSalary) * 100) : 0;
+
     return {
       totalSanctioned, totalDisbursed, totalRemaining,
       totalDemanded, totalPaidOnDemands,
       pendingDemands: pendingDemands.length,
       monthlyExpenseTotal, latestSalary,
       savings: latestSalary - monthlyExpenseTotal,
+      budgetUsedPct,
       categoryData, monthlyTrend,
     };
-  }, [loans, demands, payments, expenses, documents]);
+  }, [loans, demands, payments, expenses, documents, profile]);
 
   const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold">Dashboard</h2>
+      <h2 className="text-xl font-bold dark:text-white">Dashboard</h2>
 
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="Loan Outstanding" value={fmt(stats.totalRemaining)} color="text-red-600" />
         <StatCard label="Total Paid" value={fmt(stats.totalPaidOnDemands)} color="text-green-600" />
         <StatCard label="Pending Demands" value={stats.pendingDemands} color="text-amber-600" />
         <StatCard label="Monthly Expenses" value={fmt(stats.monthlyExpenseTotal)} color="text-indigo-600" />
-        <StatCard label="Latest Salary" value={fmt(stats.latestSalary)} color="text-blue-600" />
+        <StatCard label="Monthly Salary" value={fmt(stats.latestSalary)} color="text-blue-600" />
         <StatCard label="Savings" value={fmt(stats.savings)} color={stats.savings >= 0 ? 'text-green-600' : 'text-red-600'} />
       </div>
 
+      {stats.latestSalary > 0 && (
+        <Card>
+          <h3 className="text-sm font-semibold mb-2 dark:text-white">Budget Usage</h3>
+          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <span>Spent: {fmt(stats.monthlyExpenseTotal)}</span>
+            <span>Salary: {fmt(stats.latestSalary)}</span>
+          </div>
+          <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${stats.budgetUsedPct > 90 ? 'bg-red-500' : stats.budgetUsedPct > 70 ? 'bg-amber-500' : 'bg-green-500'}`}
+              style={{ width: `${Math.min(stats.budgetUsedPct, 100)}%` }}
+            />
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+            {stats.budgetUsedPct.toFixed(1)}% of salary spent
+          </p>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card>
-          <h3 className="text-sm font-semibold mb-3">Expense Breakdown</h3>
+          <h3 className="text-sm font-semibold mb-3 dark:text-white">Expense Breakdown</h3>
           {stats.categoryData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
@@ -112,7 +138,7 @@ export default function Dashboard() {
         </Card>
 
         <Card>
-          <h3 className="text-sm font-semibold mb-3">Monthly Trend</h3>
+          <h3 className="text-sm font-semibold mb-3 dark:text-white">Monthly Trend</h3>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={stats.monthlyTrend}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
@@ -126,28 +152,28 @@ export default function Dashboard() {
       </div>
 
       <Card>
-        <h3 className="text-sm font-semibold mb-3">Loan: Disbursed vs Demanded</h3>
+        <h3 className="text-sm font-semibold mb-3 dark:text-white">Loan: Disbursed vs Demanded</h3>
         <div className="flex gap-4 text-sm">
           <div className="flex-1">
-            <div className="text-gray-500 text-xs">Sanctioned</div>
-            <div className="font-semibold">{fmt(stats.totalSanctioned)}</div>
+            <div className="text-gray-500 dark:text-gray-400 text-xs">Sanctioned</div>
+            <div className="font-semibold dark:text-white">{fmt(stats.totalSanctioned)}</div>
           </div>
           <div className="flex-1">
-            <div className="text-gray-500 text-xs">Disbursed</div>
-            <div className="font-semibold">{fmt(stats.totalDisbursed)}</div>
+            <div className="text-gray-500 dark:text-gray-400 text-xs">Disbursed</div>
+            <div className="font-semibold dark:text-white">{fmt(stats.totalDisbursed)}</div>
           </div>
           <div className="flex-1">
-            <div className="text-gray-500 text-xs">Demanded</div>
-            <div className="font-semibold">{fmt(stats.totalDemanded)}</div>
+            <div className="text-gray-500 dark:text-gray-400 text-xs">Demanded</div>
+            <div className="font-semibold dark:text-white">{fmt(stats.totalDemanded)}</div>
           </div>
         </div>
-        <div className="mt-3 h-3 bg-gray-100 rounded-full overflow-hidden flex">
+        <div className="mt-3 h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden flex">
           <div
             className="bg-indigo-500 h-full"
             style={{ width: `${stats.totalSanctioned ? (stats.totalDisbursed / stats.totalSanctioned) * 100 : 0}%` }}
           />
         </div>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
           {stats.totalSanctioned ? ((stats.totalDisbursed / stats.totalSanctioned) * 100).toFixed(1) : 0}% disbursed
         </p>
       </Card>
@@ -158,7 +184,7 @@ export default function Dashboard() {
 function StatCard({ label, value, color = 'text-gray-900' }) {
   return (
     <Card>
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</p>
       <p className={`text-lg font-bold ${color}`}>{value}</p>
     </Card>
   );

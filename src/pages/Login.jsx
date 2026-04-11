@@ -19,24 +19,24 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <span className="text-white text-2xl font-bold">F</span>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">FinancialHub</h1>
-          <p className="text-sm text-gray-500 mt-1">Personal finance tracker</p>
+          <img src={import.meta.env.BASE_URL + 'logo.svg'} alt="FinancialHub" className="w-16 h-16 rounded-2xl mx-auto mb-4 shadow-lg" />
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            <span className="text-[#1a2744] dark:text-white">financial</span><span className="text-[#10b981]">Hub</span>
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Personal finance tracker</p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-4">
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm p-3 rounded-xl">{error}</div>
+            <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-sm p-3 rounded-xl">{error}</div>
           )}
           <button
             onClick={handleGoogleLogin}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            className="w-full flex items-center justify-center gap-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-white disabled:opacity-50 transition-colors"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
@@ -46,7 +46,7 @@ export default function Login() {
             </svg>
             {loading ? 'Signing in...' : 'Sign in with Google'}
           </button>
-          <p className="text-xs text-center text-gray-400">
+          <p className="text-xs text-center text-gray-400 dark:text-gray-500">
             Only authorized accounts can sign in
           </p>
         </div>
