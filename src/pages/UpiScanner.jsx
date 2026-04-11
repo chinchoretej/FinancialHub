@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import Card from '../components/Card';
 import { HiOutlineQrCode, HiCamera, HiXMark, HiArrowTopRightOnSquare } from 'react-icons/hi2';
@@ -23,7 +23,6 @@ function parseUpiUrl(url) {
 function ScannerOverlay() {
   return (
     <div className="absolute inset-0 pointer-events-none z-10">
-      {/* Dark overlay with transparent center cutout */}
       <div className="absolute inset-0">
         <div className="absolute top-0 left-0 right-0 h-[calc(50%-110px)] bg-black/50" />
         <div className="absolute bottom-0 left-0 right-0 h-[calc(50%-110px)] bg-black/50" />
@@ -31,24 +30,17 @@ function ScannerOverlay() {
         <div className="absolute top-[calc(50%-110px)] right-0 w-[calc(50%-110px)] h-[220px] bg-black/50" />
       </div>
 
-      {/* Scanner frame with corner brackets */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[220px] h-[220px]">
-        {/* Top-left corner */}
         <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-indigo-400 rounded-tl-lg" />
-        {/* Top-right corner */}
         <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-indigo-400 rounded-tr-lg" />
-        {/* Bottom-left corner */}
         <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-indigo-400 rounded-bl-lg" />
-        {/* Bottom-right corner */}
         <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-indigo-400 rounded-br-lg" />
 
-        {/* Animated scan line */}
         <div className="absolute left-2 right-2 h-[2px] animate-scanner-line">
           <div className="h-full bg-gradient-to-r from-transparent via-indigo-400 to-transparent" />
         </div>
       </div>
 
-      {/* Bottom hint text */}
       <div className="absolute bottom-6 left-0 right-0 text-center">
         <p className="text-white/80 text-xs font-medium drop-shadow">Point camera at a QR code</p>
       </div>
@@ -57,14 +49,16 @@ function ScannerOverlay() {
 }
 
 export default function UpiScanner() {
-  const [scanning, setScanning] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const scannerRef = useRef(null);
+  const mountedRef = useRef(false);
 
-  const startScanner = async () => {
-    setError('');
-    setResult(null);
+  const initScanner = useCallback(async () => {
+    const el = document.getElementById('qr-reader');
+    if (!el || scannerRef.current) return;
 
     try {
       const scanner = new Html5Qrcode('qr-reader');
@@ -77,28 +71,48 @@ export default function UpiScanner() {
           const upi = parseUpiUrl(text);
           setResult(upi || { raw: text, pa: '', pn: '', am: '', tn: '', cu: '' });
           scanner.stop().catch(() => {});
-          setScanning(false);
+          scannerRef.current = null;
+          setShowScanner(false);
+          setCameraReady(false);
         },
         () => {}
       );
-      setScanning(true);
+      setCameraReady(true);
     } catch (err) {
       setError(err?.message || 'Camera access denied or not available');
+      setShowScanner(false);
+      setCameraReady(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (showScanner && !scannerRef.current) {
+      const timer = setTimeout(initScanner, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [showScanner, initScanner]);
+
+  const openScanner = () => {
+    setError('');
+    setResult(null);
+    setCameraReady(false);
+    setShowScanner(true);
   };
 
-  const stopScanner = async () => {
+  const closeScanner = async () => {
     if (scannerRef.current) {
       try { await scannerRef.current.stop(); } catch {}
       scannerRef.current = null;
     }
-    setScanning(false);
+    setShowScanner(false);
+    setCameraReady(false);
   };
 
   useEffect(() => {
     return () => {
       if (scannerRef.current) {
         scannerRef.current.stop().catch(() => {});
+        scannerRef.current = null;
       }
     };
   }, []);
@@ -111,13 +125,21 @@ export default function UpiScanner() {
     <div className="space-y-4">
       <h2 className="text-xl font-bold dark:text-white">UPI Scanner</h2>
 
-      {/* Fullscreen scanner overlay */}
-      {scanning && (
+      {showScanner && (
         <div className="fixed inset-0 z-50 bg-black">
-          <div id="qr-reader" className="w-full h-full" />
-          <ScannerOverlay />
+          <div id="qr-reader" className="absolute inset-0" />
+
+          {!cameraReady && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center">
+              <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin mb-3" />
+              <p className="text-white/70 text-sm">Starting camera...</p>
+            </div>
+          )}
+
+          {cameraReady && <ScannerOverlay />}
+
           <button
-            onClick={stopScanner}
+            onClick={closeScanner}
             className="absolute top-4 right-4 z-20 p-2.5 bg-black/50 backdrop-blur-sm rounded-full text-white hover:bg-black/70 transition-colors"
           >
             <HiXMark className="w-6 h-6" />
@@ -125,10 +147,7 @@ export default function UpiScanner() {
         </div>
       )}
 
-      {/* Hidden container for html5-qrcode when not scanning */}
-      {!scanning && <div id="qr-reader" className="hidden" />}
-
-      {!result && !scanning && (
+      {!result && !showScanner && (
         <Card>
           <div className="text-center py-6 space-y-5">
             <div className="relative w-24 h-24 mx-auto">
@@ -140,7 +159,7 @@ export default function UpiScanner() {
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Point your camera at a UPI QR code to pay</p>
             </div>
             <button
-              onClick={startScanner}
+              onClick={openScanner}
               className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors"
             >
               <HiCamera className="w-5 h-5" /> Open Scanner
@@ -206,7 +225,7 @@ export default function UpiScanner() {
           )}
 
           <button
-            onClick={() => { setResult(null); setError(''); startScanner(); }}
+            onClick={openScanner}
             className="mt-2 w-full py-2.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
           >
             Scan Again
