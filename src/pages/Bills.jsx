@@ -13,12 +13,16 @@ const BILL_CATEGORIES = ['Utility', 'Rent', 'Insurance', 'Subscription', 'EMI', 
 export default function Bills() {
   const { data: bills, add, remove } = useCollection('bills', 'createdAt');
   const { data: billPayments, add: addPayment, remove: removePayment } = useCollection('billPayments', 'createdAt');
+  const { add: addExpense, remove: removeExpense } = useCollection('expenses', 'date');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyBill);
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [confirmUnpay, setConfirmUnpay] = useState(null);
+  const [payBill, setPayBill] = useState(null);
+  const [payAmount, setPayAmount] = useState('');
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+  const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
   const handleSave = async () => {
     if (!form.name || !form.dueDay) return;
@@ -35,28 +39,52 @@ export default function Bills() {
     return map;
   }, [billPayments]);
 
-  const handleTogglePaid = async (bill) => {
+  const handleTogglePaid = (bill) => {
     const key = `${bill.id}_${selectedMonth}`;
     const payment = paidMap[key];
     if (payment) {
-      setConfirmUnpay({ bill, paymentId: payment.id });
+      setConfirmUnpay({ bill, paymentId: payment.id, expenseId: payment.expenseId });
     } else {
-      await addPayment({
-        billId: bill.id,
-        month: selectedMonth,
-        paidDate: format(new Date(), 'yyyy-MM-dd'),
-      });
+      setPayBill(bill);
+      setPayAmount('');
     }
+  };
+
+  const handleConfirmPay = async () => {
+    if (!payBill || !payAmount) return;
+    const today = format(new Date(), 'yyyy-MM-dd');
+
+    const expenseRef = await addExpense({
+      date: today,
+      category: 'Bills',
+      amount: payAmount,
+      paymentMode: 'UPI',
+      notes: `${payBill.name} (${payBill.category})`,
+    });
+
+    await addPayment({
+      billId: payBill.id,
+      month: selectedMonth,
+      paidDate: today,
+      amount: payAmount,
+      expenseId: expenseRef.id,
+    });
+
+    setPayBill(null);
+    setPayAmount('');
   };
 
   const confirmReverse = async () => {
-    if (confirmUnpay) {
-      await removePayment(confirmUnpay.paymentId);
-      setConfirmUnpay(null);
+    if (!confirmUnpay) return;
+    if (confirmUnpay.expenseId) {
+      await removeExpense(confirmUnpay.expenseId);
     }
+    await removePayment(confirmUnpay.paymentId);
+    setConfirmUnpay(null);
   };
 
   const isPaid = (billId) => !!paidMap[`${billId}_${selectedMonth}`];
+  const getPaidAmount = (billId) => paidMap[`${billId}_${selectedMonth}`]?.amount;
 
   const upcomingReminders = useMemo(() => {
     const today = new Date();
@@ -128,6 +156,7 @@ export default function Bills() {
         <div className="space-y-2">
           {bills.map(b => {
             const paid = isPaid(b.id);
+            const paidAmt = getPaidAmount(b.id);
             const dayNum = Number(b.dueDay) || 1;
             const dueStr = `${selectedMonth}-${String(dayNum).padStart(2, '0')}`;
             return (
@@ -149,9 +178,14 @@ export default function Bills() {
                       <span className={`text-sm font-medium ${paid ? 'line-through text-gray-400' : 'dark:text-white'}`}>{b.name}</span>
                       <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-300 rounded-full">{b.category}</span>
                     </div>
-                    <span className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                      <HiClock className="w-3 h-3" /> Due: {dueStr}
-                    </span>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      <span className="text-xs text-gray-400 flex items-center gap-1">
+                        <HiClock className="w-3 h-3" /> Due: {dueStr}
+                      </span>
+                      {paid && paidAmt && (
+                        <span className="text-xs text-green-600 dark:text-green-400 font-medium">Paid {fmt(paidAmt)}</span>
+                      )}
+                    </div>
                   </div>
                   <button onClick={() => remove(b.id)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg shrink-0">
                     <HiTrash className="w-4 h-4 text-red-400" />
@@ -163,6 +197,7 @@ export default function Bills() {
         </div>
       )}
 
+      {/* Add Bill modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Add Bill">
         <div className="space-y-3">
           <div>
@@ -188,10 +223,39 @@ export default function Bills() {
         </div>
       </Modal>
 
+      {/* Pay Bill modal — asks for amount */}
+      <Modal open={!!payBill} onClose={() => setPayBill(null)} title="Mark as Paid">
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            How much did you pay for <span className="font-medium text-gray-900 dark:text-white">{payBill?.name}</span>?
+          </p>
+          <div>
+            <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">Amount Paid</label>
+            <input
+              type="number"
+              value={payAmount}
+              onChange={e => setPayAmount(e.target.value)}
+              placeholder="Enter amount"
+              autoFocus
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500">This will also be added as an expense under "Bills" category</p>
+          <button
+            onClick={handleConfirmPay}
+            disabled={!payAmount}
+            className="w-full py-2.5 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-40 transition-colors"
+          >
+            Confirm Payment
+          </button>
+        </div>
+      </Modal>
+
+      {/* Unpay confirmation */}
       <ConfirmDialog
         open={!!confirmUnpay}
         title="Mark as Unpaid?"
-        message={`Are you sure you want to reverse the paid status for "${confirmUnpay?.bill?.name}"?`}
+        message={`This will reverse the paid status for "${confirmUnpay?.bill?.name}" and remove the linked expense entry.`}
         confirmText="Yes, Unpay"
         cancelText="Cancel"
         onConfirm={confirmReverse}
