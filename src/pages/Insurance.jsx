@@ -160,7 +160,7 @@ export default function Insurance() {
         </div>
         <div>
           <h2 className="text-lg font-bold dark:text-white">Set Up Insurance PIN</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">This PIN protects your policy details. Share it only with trusted family.</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">This PIN protects your policy details. Share it only with trusted family.</p>
         </div>
         <div className="space-y-3">
           <input
@@ -170,7 +170,7 @@ export default function Insurance() {
             value={pinInput}
             onChange={e => { setPinInput(e.target.value.replace(/\D/g, '')); setPinError(''); }}
             placeholder="Enter PIN (min 4 digits)"
-            className="w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-center text-lg tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+            className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-center text-sm tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
           />
           <input
             type="password"
@@ -179,7 +179,7 @@ export default function Insurance() {
             value={confirmPin}
             onChange={e => { setConfirmPin(e.target.value.replace(/\D/g, '')); setPinError(''); }}
             placeholder="Confirm PIN"
-            className="w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-center text-lg tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+            className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-center text-sm tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
           />
           {pinError && <p className="text-xs text-red-500">{pinError}</p>}
           <button onClick={handleSetPin} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors">
@@ -198,7 +198,7 @@ export default function Insurance() {
         </div>
         <div>
           <h2 className="text-lg font-bold dark:text-white">Insurance Vault</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Enter your PIN to view policy details</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Enter your PIN to view policy details</p>
         </div>
         <div className="space-y-3">
           <input
@@ -210,7 +210,7 @@ export default function Insurance() {
             onKeyDown={e => e.key === 'Enter' && handleUnlock()}
             placeholder="Enter PIN"
             autoFocus
-            className="w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-center text-lg tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+            className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-center text-sm tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
           />
           {pinError && <p className="text-xs text-red-500">{pinError}</p>}
           <button onClick={handleUnlock} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors">
@@ -370,15 +370,15 @@ export default function Insurance() {
           <input type="password" inputMode="numeric" maxLength={8} value={oldPinInput}
             onChange={e => { setOldPinInput(e.target.value.replace(/\D/g, '')); setChangePinError(''); }}
             placeholder="Current PIN"
-            className="w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-center text-lg tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white" />
+            className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-center text-sm tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white" />
           <input type="password" inputMode="numeric" maxLength={8} value={newPinInput}
             onChange={e => { setNewPinInput(e.target.value.replace(/\D/g, '')); setChangePinError(''); }}
             placeholder="New PIN (min 4 digits)"
-            className="w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-center text-lg tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white" />
+            className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-center text-sm tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white" />
           <input type="password" inputMode="numeric" maxLength={8} value={newPinConfirm}
             onChange={e => { setNewPinConfirm(e.target.value.replace(/\D/g, '')); setChangePinError(''); }}
             placeholder="Confirm New PIN"
-            className="w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-center text-lg tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white" />
+            className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-center text-sm tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white" />
           {changePinError && <p className="text-xs text-red-500 text-center">{changePinError}</p>}
           <button onClick={handleChangePin} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors">
             Update PIN
