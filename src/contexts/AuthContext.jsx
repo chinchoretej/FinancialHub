@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 import {
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   GoogleAuthProvider,
 } from 'firebase/auth';
@@ -10,11 +12,39 @@ import { auth, googleProvider, ALLOWED_EMAIL } from '../lib/firebase';
 const AuthContext = createContext(null);
 
 const TOKEN_KEY = 'fh_google_access_token';
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+function saveToken(token) {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+function handleCredential(result, setGoogleToken) {
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  if (credential?.accessToken) {
+    setGoogleToken(credential.accessToken);
+    saveToken(credential.accessToken);
+  }
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [googleToken, setGoogleToken] = useState(() => sessionStorage.getItem(TOKEN_KEY));
+  const [googleToken, setGoogleToken] = useState(() => localStorage.getItem(TOKEN_KEY));
+
+  // Handle redirect result on page load (mobile flow)
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          if (result.user.email !== ALLOWED_EMAIL) {
+            signOut(auth);
+            return;
+          }
+          handleCredential(result, setGoogleToken);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
@@ -23,7 +53,7 @@ export function AuthProvider({ children }) {
       } else {
         setUser(null);
         setGoogleToken(null);
-        sessionStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(TOKEN_KEY);
       }
       setLoading(false);
     });
@@ -31,34 +61,36 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async () => {
+    if (isMobile) {
+      // Redirect flow — more reliable on mobile, no popup blockers
+      signInWithRedirect(auth, googleProvider);
+      return;
+    }
     const result = await signInWithPopup(auth, googleProvider);
     if (result.user.email !== ALLOWED_EMAIL) {
       await signOut(auth);
       throw new Error('Unauthorized. Only ' + ALLOWED_EMAIL + ' can access this app.');
     }
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential?.accessToken) {
-      setGoogleToken(credential.accessToken);
-      sessionStorage.setItem(TOKEN_KEY, credential.accessToken);
-    }
+    handleCredential(result, setGoogleToken);
     return result;
   };
 
-  // Re-auth popup to get a fresh Google access token (needed for Drive API after session expires)
   const refreshGoogleToken = useCallback(async () => {
-    const result = await signInWithPopup(auth, googleProvider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential?.accessToken) {
-      setGoogleToken(credential.accessToken);
-      sessionStorage.setItem(TOKEN_KEY, credential.accessToken);
-      return credential.accessToken;
+    if (isMobile) {
+      signInWithRedirect(auth, googleProvider);
+      return;
     }
-    throw new Error('Could not get Google access token');
+    const result = await signInWithPopup(auth, googleProvider);
+    handleCredential(result, setGoogleToken);
+    if (!GoogleAuthProvider.credentialFromResult(result)?.accessToken) {
+      throw new Error('Could not get Google access token');
+    }
+    return GoogleAuthProvider.credentialFromResult(result).accessToken;
   }, []);
 
   const logout = async () => {
     setGoogleToken(null);
-    sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     return signOut(auth);
   };
 
