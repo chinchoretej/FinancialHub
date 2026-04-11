@@ -4,17 +4,18 @@ import Card from '../components/Card';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
-import { HiOutlineBellAlert, HiPlus, HiTrash, HiCheckCircle, HiClock } from 'react-icons/hi2';
+import { HiOutlineBellAlert, HiPlus, HiTrash, HiCheckCircle, HiClock, HiPencil } from 'react-icons/hi2';
 import { format, differenceInDays } from 'date-fns';
 
 const emptyBill = { name: '', dueDay: '', category: 'Utility' };
 const BILL_CATEGORIES = ['Utility', 'Rent', 'Insurance', 'Subscription', 'EMI', 'Credit Card', 'Other'];
 
 export default function Bills() {
-  const { data: bills, add, remove } = useCollection('bills', 'createdAt');
+  const { data: bills, add, update, remove } = useCollection('bills', 'createdAt');
   const { data: billPayments, add: addPayment, remove: removePayment } = useCollection('billPayments', 'createdAt');
   const { add: addExpense, remove: removeExpense } = useCollection('expenses', 'date');
   const [showModal, setShowModal] = useState(false);
+  const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyBill);
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [confirmUnpay, setConfirmUnpay] = useState(null);
@@ -24,10 +25,27 @@ export default function Bills() {
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
   const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
+  const openAdd = () => {
+    setForm(emptyBill);
+    setEditId(null);
+    setShowModal(true);
+  };
+
+  const openEdit = (bill) => {
+    setForm({ name: bill.name, dueDay: bill.dueDay, category: bill.category });
+    setEditId(bill.id);
+    setShowModal(true);
+  };
+
   const handleSave = async () => {
     if (!form.name || !form.dueDay) return;
-    await add(form);
+    if (editId) {
+      await update(editId, { name: form.name, dueDay: form.dueDay });
+    } else {
+      await add(form);
+    }
     setForm(emptyBill);
+    setEditId(null);
     setShowModal(false);
   };
 
@@ -112,7 +130,7 @@ export default function Bills() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold dark:text-white">Bills</h2>
         <button
-          onClick={() => { setForm(emptyBill); setShowModal(true); }}
+          onClick={openAdd}
           className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white text-sm rounded-xl hover:bg-indigo-700 transition-colors"
         >
           <HiPlus className="w-4 h-4" /> Add Bill
@@ -187,9 +205,14 @@ export default function Bills() {
                       )}
                     </div>
                   </div>
-                  <button onClick={() => remove(b.id)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg shrink-0">
-                    <HiTrash className="w-4 h-4 text-red-400" />
-                  </button>
+                  <div className="flex gap-0.5 shrink-0">
+                    <button onClick={() => openEdit(b)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                      <HiPencil className="w-4 h-4 text-gray-400" />
+                    </button>
+                    <button onClick={() => remove(b.id)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                      <HiTrash className="w-4 h-4 text-red-400" />
+                    </button>
+                  </div>
                 </div>
               </Card>
             );
@@ -197,28 +220,29 @@ export default function Bills() {
         </div>
       )}
 
-      {/* Add Bill modal */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="Add Bill">
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editId ? 'Edit Bill' : 'Add Bill'}>
         <div className="space-y-3">
           <div>
             <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">Bill Name</label>
             <input type="text" value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Electricity Bill"
               className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white" />
           </div>
-          <div>
-            <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">Category</label>
-            <select value={form.category} onChange={e => set('category', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white">
-              {BILL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+          {!editId && (
+            <div>
+              <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">Category</label>
+              <select value={form.category} onChange={e => set('category', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white">
+                {BILL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          )}
           <div>
             <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">Due Day of Month (1-31)</label>
             <input type="number" min="1" max="31" value={form.dueDay} onChange={e => set('dueDay', e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white" />
           </div>
           <button onClick={handleSave} className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors">
-            Save Bill
+            {editId ? 'Update' : 'Save Bill'}
           </button>
         </div>
       </Modal>
