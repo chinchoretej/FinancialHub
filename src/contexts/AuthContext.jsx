@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import {
   onAuthStateChanged,
   signInWithPopup,
@@ -12,13 +12,14 @@ import { auth, googleProvider, isAllowedEmail } from '../lib/firebase';
 const AuthContext = createContext(null);
 
 const TOKEN_KEY = 'fh_google_access_token';
+const REDIRECT_KEY = 'fh_auth_redirect_pending';
 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 function saveToken(token) {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
-function handleCredential(result, setGoogleToken) {
+function extractToken(result, setGoogleToken) {
   const credential = GoogleAuthProvider.credentialFromResult(result);
   if (credential?.accessToken) {
     setGoogleToken(credential.accessToken);
@@ -30,37 +31,61 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [googleToken, setGoogleToken] = useState(() => localStorage.getItem(TOKEN_KEY));
+  const redirectResolved = useRef(false);
 
   useEffect(() => {
+    const hasPendingRedirect = sessionStorage.getItem(REDIRECT_KEY);
+
+    // First, resolve any pending redirect before we trust onAuthStateChanged
     getRedirectResult(auth)
       .then((result) => {
+        sessionStorage.removeItem(REDIRECT_KEY);
         if (result) {
           if (!isAllowedEmail(result.user.email)) {
             signOut(auth);
-            return;
+          } else {
+            extractToken(result, setGoogleToken);
           }
-          handleCredential(result, setGoogleToken);
         }
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => {
+        sessionStorage.removeItem(REDIRECT_KEY);
+      })
+      .finally(() => {
+        redirectResolved.current = true;
+      });
 
-  useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser && isAllowedEmail(firebaseUser.email)) {
         setUser(firebaseUser);
-      } else {
+        setLoading(false);
+      } else if (!hasPendingRedirect || redirectResolved.current) {
+        // Only treat as "no user" if we're not mid-redirect
         setUser(null);
         setGoogleToken(null);
         localStorage.removeItem(TOKEN_KEY);
+        setLoading(false);
       }
-      setLoading(false);
+      // If redirect is pending and user is null, keep loading=true and wait
     });
-    return unsub;
+
+    // Safety timeout — if redirect takes too long, stop loading anyway
+    const timeout = setTimeout(() => {
+      setLoading((prev) => {
+        if (prev) redirectResolved.current = true;
+        return false;
+      });
+    }, 5000);
+
+    return () => {
+      unsub();
+      clearTimeout(timeout);
+    };
   }, []);
 
   const login = async () => {
     if (isMobile) {
+      sessionStorage.setItem(REDIRECT_KEY, '1');
       signInWithRedirect(auth, googleProvider);
       return;
     }
@@ -69,17 +94,18 @@ export function AuthProvider({ children }) {
       await signOut(auth);
       throw new Error('Unauthorized. Your account is not allowed to access this app.');
     }
-    handleCredential(result, setGoogleToken);
+    extractToken(result, setGoogleToken);
     return result;
   };
 
   const refreshGoogleToken = useCallback(async () => {
     if (isMobile) {
+      sessionStorage.setItem(REDIRECT_KEY, '1');
       signInWithRedirect(auth, googleProvider);
       return;
     }
     const result = await signInWithPopup(auth, googleProvider);
-    handleCredential(result, setGoogleToken);
+    extractToken(result, setGoogleToken);
     if (!GoogleAuthProvider.credentialFromResult(result)?.accessToken) {
       throw new Error('Could not get Google access token');
     }
