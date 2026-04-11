@@ -3,16 +3,11 @@ import { useCollection } from '../hooks/useFirestore';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
-import { HiOutlineReceiptPercent, HiPlus, HiTrash, HiMagnifyingGlass, HiXMark, HiAdjustmentsHorizontal } from 'react-icons/hi2';
-import {
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-} from 'recharts';
+import { HiOutlineReceiptPercent, HiPlus, HiTrash, HiMagnifyingGlass, HiXMark } from 'react-icons/hi2';
 import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 
 const CATEGORIES = ['Food', 'Transport', 'Utilities', 'Shopping', 'Health', 'Entertainment', 'Education', 'Rent', 'EMI', 'Bills', 'Other'];
 const PAYMENT_MODES = ['Cash', 'UPI', 'Credit Card', 'Debit Card', 'Net Banking', 'Other'];
-const COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444', '#14b8a6', '#f97316', '#64748b'];
 
 const emptyExpense = { date: '', category: 'Food', amount: '', paymentMode: 'UPI', notes: '' };
 
@@ -90,22 +85,7 @@ export default function Expenses() {
     return result;
   }, [monthFiltered, searchKeyword, filterCategory, filterMinAmount, filterMaxAmount, filterDateFrom, filterDateTo]);
 
-  const { total, categoryData, dailyData } = useMemo(() => {
-    const total = filtered.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    const catMap = {};
-    const dayMap = {};
-    filtered.forEach(e => {
-      const cat = e.category || 'Other';
-      catMap[cat] = (catMap[cat] || 0) + (Number(e.amount) || 0);
-      const day = e.date?.slice(8, 10);
-      if (day) dayMap[day] = (dayMap[day] || 0) + (Number(e.amount) || 0);
-    });
-    return {
-      total,
-      categoryData: Object.entries(catMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
-      dailyData: Object.entries(dayMap).map(([day, amount]) => ({ day, amount })).sort((a, b) => a.day.localeCompare(b.day)),
-    };
-  }, [filtered]);
+  const total = useMemo(() => filtered.reduce((s, e) => s + (Number(e.amount) || 0), 0), [filtered]);
 
   return (
     <div className="space-y-4">
@@ -195,55 +175,6 @@ export default function Expenses() {
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Total: <span className="font-semibold text-gray-900 dark:text-white">{fmt(total)}</span>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card>
-          <h3 className="text-sm font-semibold mb-3">Category Breakdown</h3>
-          {categoryData.length > 0 ? (
-            <>
-              <ResponsiveContainer width="100%" height={180}>
-                <PieChart>
-                  <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={65}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                    {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={(v) => fmt(v)} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-1 mt-2">
-                {categoryData.map((c, i) => (
-                  <div key={c.name} className="flex justify-between text-xs">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                      {c.name}
-                    </span>
-                    <span className="font-medium">{fmt(c.value)}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <p className="text-xs text-gray-400 text-center py-8">No data</p>
-          )}
-        </Card>
-
-        <Card>
-          <h3 className="text-sm font-semibold mb-3">Daily Spending</h3>
-          {dailyData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={dailyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                <XAxis dataKey="day" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip formatter={(v) => fmt(v)} />
-                <Bar dataKey="amount" fill="#6366f1" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-xs text-gray-400 text-center py-8">No data</p>
-          )}
-        </Card>
       </div>
 
       {filtered.length === 0 ? (
