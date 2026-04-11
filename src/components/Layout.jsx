@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUserProfile } from '../hooks/useUserProfile';
 import Modal from './Modal';
+import ConfirmDialog from './ConfirmDialog';
 import {
   HiOutlineHome,
   HiOutlineBanknotes,
@@ -32,6 +33,7 @@ export default function Layout() {
   const { dark, toggle } = useTheme();
   const { profile, saveProfile } = useUserProfile();
   const [showSettings, setShowSettings] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [salary, setSalary] = useState('');
   const navigate = useNavigate();
 
@@ -76,7 +78,7 @@ export default function Layout() {
             <HiCog6Tooth className="w-5 h-5" />
           </button>
           <button
-            onClick={logout}
+            onClick={() => setShowLogoutConfirm(true)}
             className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
             title="Logout"
           >
@@ -145,6 +147,17 @@ export default function Layout() {
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={showLogoutConfirm}
+        title="Logout"
+        message="Are you sure you want to logout?"
+        confirmText="Logout"
+        cancelText="Cancel"
+        danger
+        onConfirm={() => { setShowLogoutConfirm(false); logout(); }}
+        onCancel={() => setShowLogoutConfirm(false)}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useCollection } from '../hooks/useFirestore';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
 import { HiOutlineBellAlert, HiPlus, HiTrash, HiCheckCircle, HiClock } from 'react-icons/hi2';
 import { format, differenceInDays } from 'date-fns';
@@ -11,10 +12,11 @@ const BILL_CATEGORIES = ['Utility', 'Rent', 'Insurance', 'Subscription', 'EMI', 
 
 export default function Bills() {
   const { data: bills, add, remove } = useCollection('bills', 'createdAt');
-  const { data: billPayments, add: addPayment } = useCollection('billPayments', 'createdAt');
+  const { data: billPayments, add: addPayment, remove: removePayment } = useCollection('billPayments', 'createdAt');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyBill);
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
+  const [confirmUnpay, setConfirmUnpay] = useState(null);
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
@@ -33,14 +35,25 @@ export default function Bills() {
     return map;
   }, [billPayments]);
 
-  const togglePaid = async (billId) => {
-    const key = `${billId}_${selectedMonth}`;
-    if (paidMap[key]) return;
-    await addPayment({
-      billId,
-      month: selectedMonth,
-      paidDate: format(new Date(), 'yyyy-MM-dd'),
-    });
+  const handleTogglePaid = async (bill) => {
+    const key = `${bill.id}_${selectedMonth}`;
+    const payment = paidMap[key];
+    if (payment) {
+      setConfirmUnpay({ bill, paymentId: payment.id });
+    } else {
+      await addPayment({
+        billId: bill.id,
+        month: selectedMonth,
+        paidDate: format(new Date(), 'yyyy-MM-dd'),
+      });
+    }
+  };
+
+  const confirmReverse = async () => {
+    if (confirmUnpay) {
+      await removePayment(confirmUnpay.paymentId);
+      setConfirmUnpay(null);
+    }
   };
 
   const isPaid = (billId) => !!paidMap[`${billId}_${selectedMonth}`];
@@ -121,13 +134,13 @@ export default function Bills() {
               <Card key={b.id} className={`!p-3 ${paid ? 'opacity-60' : ''}`}>
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => togglePaid(b.id)}
+                    onClick={() => handleTogglePaid(b)}
                     className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
                       paid
                         ? 'border-green-500 bg-green-500 text-white'
                         : 'border-gray-300 dark:border-gray-500 hover:border-indigo-400'
                     }`}
-                    title={paid ? 'Paid' : 'Mark as paid'}
+                    title={paid ? 'Mark as unpaid' : 'Mark as paid'}
                   >
                     {paid && <HiCheckCircle className="w-4 h-4" />}
                   </button>
@@ -174,6 +187,16 @@ export default function Bills() {
           </button>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={!!confirmUnpay}
+        title="Mark as Unpaid?"
+        message={`Are you sure you want to reverse the paid status for "${confirmUnpay?.bill?.name}"?`}
+        confirmText="Yes, Unpay"
+        cancelText="Cancel"
+        onConfirm={confirmReverse}
+        onCancel={() => setConfirmUnpay(null)}
+      />
     </div>
   );
 }
