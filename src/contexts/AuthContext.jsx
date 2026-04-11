@@ -7,7 +7,7 @@ import {
   signOut,
   GoogleAuthProvider,
 } from 'firebase/auth';
-import { auth, googleProvider, ALLOWED_EMAIL } from '../lib/firebase';
+import { auth, googleProvider, isAllowedEmail } from '../lib/firebase';
 
 const AuthContext = createContext(null);
 
@@ -31,12 +31,11 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [googleToken, setGoogleToken] = useState(() => localStorage.getItem(TOKEN_KEY));
 
-  // Handle redirect result on page load (mobile flow)
   useEffect(() => {
     getRedirectResult(auth)
       .then((result) => {
         if (result) {
-          if (result.user.email !== ALLOWED_EMAIL) {
+          if (!isAllowedEmail(result.user.email)) {
             signOut(auth);
             return;
           }
@@ -48,7 +47,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser && firebaseUser.email === ALLOWED_EMAIL) {
+      if (firebaseUser && isAllowedEmail(firebaseUser.email)) {
         setUser(firebaseUser);
       } else {
         setUser(null);
@@ -62,14 +61,13 @@ export function AuthProvider({ children }) {
 
   const login = async () => {
     if (isMobile) {
-      // Redirect flow — more reliable on mobile, no popup blockers
       signInWithRedirect(auth, googleProvider);
       return;
     }
     const result = await signInWithPopup(auth, googleProvider);
-    if (result.user.email !== ALLOWED_EMAIL) {
+    if (!isAllowedEmail(result.user.email)) {
       await signOut(auth);
-      throw new Error('Unauthorized. Only ' + ALLOWED_EMAIL + ' can access this app.');
+      throw new Error('Unauthorized. Your account is not allowed to access this app.');
     }
     handleCredential(result, setGoogleToken);
     return result;

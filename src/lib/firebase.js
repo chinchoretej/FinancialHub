@@ -19,4 +19,8 @@ export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
 
-export const ALLOWED_EMAIL = import.meta.env.VITE_ALLOWED_EMAIL;
+export const ALLOWED_EMAILS = (import.meta.env.VITE_ALLOWED_EMAILS || '').split(',').map(e => e.trim().toLowerCase());
+
+export function isAllowedEmail(email) {
+  return ALLOWED_EMAILS.includes(email?.toLowerCase());
+}
