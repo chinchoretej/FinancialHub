@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useCollection } from '../hooks/useFirestore';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
 import { HiOutlineBanknotes, HiPlus, HiTrash, HiPencil } from 'react-icons/hi2';
 
@@ -22,12 +23,13 @@ const emptyPayment = {
 export default function Loan() {
   const { data: loans, add: addLoan, update: updateLoan, remove: removeLoan } = useCollection('loans', 'createdAt');
   const { data: demands, add: addDemand, update: updateDemand, remove: removeDemand } = useCollection('demands', 'createdAt');
-  const { data: payments, add: addPayment, remove: removePayment } = useCollection('payments', 'createdAt');
+  const { data: payments, add: addPayment, update: updatePayment, remove: removePayment } = useCollection('payments', 'createdAt');
 
   const [tab, setTab] = useState('loans');
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({});
   const [editId, setEditId] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const openAdd = (type, defaults) => {
     setForm(defaults);
@@ -65,9 +67,20 @@ export default function Loan() {
         delayDays = Math.round((paid - due) / (1000 * 60 * 60 * 24));
       }
 
-      await addPayment({ ...form, totalPaid, outstandingAmount, delayDays });
+      const paymentData = { ...form, totalPaid, outstandingAmount, delayDays };
+      editId ? await updatePayment(editId, paymentData) : await addPayment(paymentData);
     }
     setModal(null);
+  };
+
+  const confirmDelete = (type, id, label) => setDeleteConfirm({ type, id, label });
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    const { type, id } = deleteConfirm;
+    if (type === 'loan') await removeLoan(id);
+    else if (type === 'demand') await removeDemand(id);
+    else if (type === 'payment') await removePayment(id);
+    setDeleteConfirm(null);
   };
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
@@ -123,7 +136,7 @@ export default function Loan() {
                   </div>
                   <div className="flex gap-1">
                     <button onClick={() => openEdit('loan', loan)} className="p-1.5 hover:bg-gray-100 rounded-lg"><HiPencil className="w-4 h-4 text-gray-400" /></button>
-                    <button onClick={() => removeLoan(loan.id)} className="p-1.5 hover:bg-gray-100 rounded-lg"><HiTrash className="w-4 h-4 text-red-400" /></button>
+                    <button onClick={() => confirmDelete('loan', loan.id, loan.bankName)} className="p-1.5 hover:bg-gray-100 rounded-lg"><HiTrash className="w-4 h-4 text-red-400" /></button>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
@@ -159,7 +172,7 @@ export default function Loan() {
                       'bg-red-100 text-red-700'
                     }`}>{d.status}</span>
                     <button onClick={() => openEdit('demand', d)} className="p-1.5 hover:bg-gray-100 rounded-lg"><HiPencil className="w-4 h-4 text-gray-400" /></button>
-                    <button onClick={() => removeDemand(d.id)} className="p-1.5 hover:bg-gray-100 rounded-lg"><HiTrash className="w-4 h-4 text-red-400" /></button>
+                    <button onClick={() => confirmDelete('demand', d.id, d.constructionStage)} className="p-1.5 hover:bg-gray-100 rounded-lg"><HiTrash className="w-4 h-4 text-red-400" /></button>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
@@ -188,7 +201,10 @@ export default function Loan() {
                       <p className="font-semibold">{demand?.constructionStage || 'Unknown Demand'}</p>
                       <p className="text-xs text-gray-500">{p.paymentDate} &middot; {p.paidBy}</p>
                     </div>
-                    <button onClick={() => removePayment(p.id)} className="p-1.5 hover:bg-gray-100 rounded-lg"><HiTrash className="w-4 h-4 text-red-400" /></button>
+                    <div className="flex gap-1">
+                      <button onClick={() => openEdit('payment', p)} className="p-1.5 hover:bg-gray-100 rounded-lg"><HiPencil className="w-4 h-4 text-gray-400" /></button>
+                      <button onClick={() => confirmDelete('payment', p.id, demand?.constructionStage || 'Payment')} className="p-1.5 hover:bg-gray-100 rounded-lg"><HiTrash className="w-4 h-4 text-red-400" /></button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
                     <div><span className="text-gray-500">Paid:</span> {fmt(p.totalPaid)}</div>
@@ -290,7 +306,7 @@ export default function Loan() {
       </Modal>
 
       {/* Payment Modal */}
-      <Modal open={modal === 'payment'} onClose={() => setModal(null)} title="Add Payment">
+      <Modal open={modal === 'payment'} onClose={() => setModal(null)} title={editId ? 'Edit Payment' : 'Add Payment'}>
         <div className="space-y-3">
           <div>
             <label className="block text-sm text-gray-600 mb-1">Demand</label>
@@ -335,10 +351,20 @@ export default function Loan() {
               className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <button onClick={handleSave} className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors">
-            Save Payment
+            {editId ? 'Update Payment' : 'Save Payment'}
           </button>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        title="Confirm Delete"
+        message={`Are you sure you want to delete "${deleteConfirm?.label}"? This action cannot be undone.`}
+        confirmText="Delete"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteConfirm(null)}
+        danger
+      />
     </div>
   );
 }
