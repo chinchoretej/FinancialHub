@@ -225,8 +225,8 @@ export default function Loan() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold dark:text-white">Home Loan & Builder Payments</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Track your home loan, builder demands & payments</p>
+          <h2 className="text-base font-bold dark:text-white">Home Loan & Builder Payments</h2>
+          <p className="text-[10px] text-gray-500 dark:text-gray-400">Track your home loan, builder demands & payments</p>
         </div>
         <button
           onClick={() => {
@@ -234,9 +234,9 @@ export default function Loan() {
             else if (tab === 'demands') openAdd('demand', emptyDemand);
             else openAdd('payment', emptyPayment);
           }}
-          className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white text-sm rounded-xl hover:bg-indigo-700 transition-colors"
+          className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 text-white text-xs rounded-xl hover:bg-indigo-700 transition-colors"
         >
-          <HiPlus className="w-4 h-4" />
+          <HiPlus className="w-3.5 h-3.5" />
           {tab === 'loans' ? 'Add Loan' : tab === 'demands' ? 'Add Demand' : 'Add Payment'}
         </button>
       </div>
