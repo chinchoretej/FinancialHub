@@ -223,19 +223,6 @@ export default function Loan() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <button
-          onClick={() => {
-            if (tab === 'loans') openAdd('loan', emptyLoan);
-            else if (tab === 'demands') openAdd('demand', emptyDemand);
-            else openAdd('payment', emptyPayment);
-          }}
-          className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
-        >
-          <HiPlus className="w-5 h-5" />
-        </button>
-      </div>
-
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
         {subTabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
@@ -747,6 +734,18 @@ export default function Loan() {
           </button>
         </div>
       </Modal>
+
+      {/* Floating Add Button */}
+      <button
+        onClick={() => {
+          if (tab === 'loans') openAdd('loan', emptyLoan);
+          else if (tab === 'demands') openAdd('demand', emptyDemand);
+          else openAdd('payment', emptyPayment);
+        }}
+        className="fixed bottom-6 right-6 z-40 p-3.5 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 active:scale-95 transition-all"
+      >
+        <HiPlus className="w-6 h-6" />
+      </button>
 
       <ConfirmDialog
         open={!!deleteConfirm}
