@@ -12,13 +12,15 @@ import {
   HiOutlineInformationCircle,
 } from 'react-icons/hi2';
 
-const PAYMENT_CATEGORIES = ['Agreement Value', 'Stamp Duty', 'Registration', 'GST', 'Legal Charges'];
+const PAYMENT_CATEGORIES = ['Agreement Value', 'Stamp Duty', 'Registration', 'GST', 'Legal Charges', 'Maintenance', 'Other Charges'];
 const CATEGORY_COLORS = {
   'Agreement Value': { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', hex: '#22c55e' },
   'Stamp Duty': { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', hex: '#3b82f6' },
   'Registration': { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', hex: '#a855f7' },
   'GST': { bg: 'bg-cyan-100 dark:bg-cyan-900/30', text: 'text-cyan-700 dark:text-cyan-400', hex: '#06b6d4' },
   'Legal Charges': { bg: 'bg-pink-100 dark:bg-pink-900/30', text: 'text-pink-700 dark:text-pink-400', hex: '#ec4899' },
+  'Maintenance': { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400', hex: '#f97316' },
+  'Other Charges': { bg: 'bg-gray-200 dark:bg-gray-600/30', text: 'text-gray-700 dark:text-gray-400', hex: '#6b7280' },
 };
 const CATEGORY_PARTICULARS = {
   'Agreement Value': '',
@@ -26,6 +28,8 @@ const CATEGORY_PARTICULARS = {
   'Registration': 'Registration Charges',
   'GST': 'GST @ Actuals',
   'Legal Charges': 'Legal Charges',
+  'Maintenance': 'Maintenance (2 Years)',
+  'Other Charges': 'Other Charges',
 };
 const DEMAND_STATUSES = ['Pending', 'Paid', 'Partial'];
 
@@ -43,6 +47,7 @@ const emptyPayment = {
 };
 const emptyFlatCost = {
   agreementValue: '', stampDuty: '', gst: '', registrationCharges: '', legalCharges: '',
+  maintenance: '', otherCharges: '',
 };
 
 function DonutChart({ segments, total, fmt }) {
@@ -109,7 +114,9 @@ export default function Loan() {
     const gst = Number(fc.gst) || 0;
     const registration = Number(fc.registrationCharges) || 0;
     const legal = Number(fc.legalCharges) || 0;
-    const totalCost = agreementValue + stampDuty + gst + registration + legal;
+    const maintenance = Number(fc.maintenance) || 0;
+    const otherCharges = Number(fc.otherCharges) || 0;
+    const totalCost = agreementValue + stampDuty + gst + registration + legal + maintenance + otherCharges;
 
     const totalPaid = payments.reduce((s, p) => s + getPaymentTotal(p), 0);
     const outstanding = totalCost - totalPaid;
@@ -138,6 +145,8 @@ export default function Loan() {
       { label: 'GST', value: gst, color: CATEGORY_COLORS['GST'].hex },
       { label: 'Registration', value: registration, color: CATEGORY_COLORS['Registration'].hex },
       { label: 'Legal Charges', value: legal, color: CATEGORY_COLORS['Legal Charges'].hex },
+      { label: 'Maintenance', value: maintenance, color: CATEGORY_COLORS['Maintenance'].hex },
+      { label: 'Other Charges', value: otherCharges, color: CATEGORY_COLORS['Other Charges'].hex },
     ].filter(item => item.value > 0);
 
     const sortedPayments = [...payments].sort((a, b) => {
@@ -300,6 +309,8 @@ export default function Loan() {
                     gst: flatCost.gst || '',
                     registrationCharges: flatCost.registrationCharges || '',
                     legalCharges: flatCost.legalCharges || '',
+                    maintenance: flatCost.maintenance || '',
+                    otherCharges: flatCost.otherCharges || '',
                   } : { ...emptyFlatCost });
                   setEditId(flatCost?.id || null);
                   setModal('flatCost');
@@ -539,7 +550,7 @@ export default function Loan() {
                     {cat === 'Agreement Value' && p.outstandingAmount != null && (
                       <div><span className="text-gray-500 dark:text-gray-400">Outstanding:</span> <span className="dark:text-white">{fmt(p.outstandingAmount)}</span></div>
                     )}
-                    <div><span className="text-gray-500 dark:text-gray-400">Ref:</span> <span className="dark:text-white">{p.transactionRef || '-'}</span></div>
+                    <div className="truncate"><span className="text-gray-500 dark:text-gray-400">Ref:</span> <span className="dark:text-white">{p.transactionRef || '-'}</span></div>
                     {p.delayDays != null && (
                       <div><span className="text-gray-500 dark:text-gray-400">Delay:</span> <span className="dark:text-white">{p.delayDays > 0 ? `${p.delayDays} days late` : 'On time'}</span></div>
                     )}
@@ -714,6 +725,8 @@ export default function Loan() {
             ['gst', 'GST'],
             ['registrationCharges', 'Registration Charges'],
             ['legalCharges', 'Legal Charges'],
+            ['maintenance', 'Maintenance (2 Years)'],
+            ['otherCharges', 'Other Charges'],
           ].map(([key, label]) => (
             <div key={key}>
               <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">{label}</label>
@@ -726,7 +739,8 @@ export default function Loan() {
               {fmt(
                 (Number(form.agreementValue) || 0) + (Number(form.stampDuty) || 0) +
                 (Number(form.gst) || 0) + (Number(form.registrationCharges) || 0) +
-                (Number(form.legalCharges) || 0)
+                (Number(form.legalCharges) || 0) + (Number(form.maintenance) || 0) +
+                (Number(form.otherCharges) || 0)
               )}
             </span>
           </div>
