@@ -311,18 +311,19 @@ export default function Loan() {
             </div>
             {flatCost && overview.totalCost > 0 ? (
               <>
-                <div className="flex gap-4 items-center">
-                  <DonutChart segments={overview.breakdownItems} total={overview.totalCost} fmt={fmt} />
-                  <div className="flex-1 space-y-2.5">
-                    {overview.breakdownItems.map(item => (
-                      <div key={item.label} className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                          <span className="text-[11px] text-gray-600 dark:text-gray-300">{item.label}</span>
-                        </div>
-                        <span className="text-[11px] font-semibold dark:text-white">{fmt(item.value)}</span>
+                <div className="space-y-2.5">
+                  {overview.breakdownItems.map(item => (
+                    <div key={item.label} className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                        <span className="text-[11px] text-gray-600 dark:text-gray-300">{item.label}</span>
                       </div>
-                    ))}
+                      <span className="text-[11px] font-semibold dark:text-white">{fmt(item.value)}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700">
+                    <span className="text-[11px] font-semibold dark:text-white">Total</span>
+                    <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{fmt(overview.totalCost)}</span>
                   </div>
                 </div>
                 <div className="mt-4 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl">
@@ -742,7 +743,7 @@ export default function Loan() {
           else if (tab === 'demands') openAdd('demand', emptyDemand);
           else openAdd('payment', emptyPayment);
         }}
-        className="fixed bottom-6 right-6 z-40 p-3.5 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 active:scale-95 transition-all"
+        className="fixed bottom-20 right-6 z-40 p-3.5 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 active:scale-95 transition-all"
       >
         <HiPlus className="w-6 h-6" />
       </button>
