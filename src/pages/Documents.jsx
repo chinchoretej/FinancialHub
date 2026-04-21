@@ -4,6 +4,7 @@ import { useGoogleDrive } from '../hooks/useGoogleDrive';
 import { useAuth } from '../contexts/AuthContext';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
 import { HiOutlineDocumentText, HiPlus, HiTrash, HiEye, HiArrowTopRightOnSquare, HiArrowPath } from 'react-icons/hi2';
 
@@ -13,6 +14,7 @@ export default function Documents() {
   const { googleToken, refreshGoogleToken } = useAuth();
   const [showUpload, setShowUpload] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState({ title: '', month: '', salaryAmount: '' });
   const fileRef = useRef(null);
@@ -109,7 +111,7 @@ export default function Documents() {
                   <a href={doc.viewUrl} target="_blank" rel="noreferrer" className="p-1.5 hover:bg-gray-100 rounded-lg" title="Open in Drive">
                     <HiArrowTopRightOnSquare className="w-4 h-4 text-gray-400" />
                   </a>
-                  <button onClick={() => handleDelete(doc)} className="p-1.5 hover:bg-gray-100 rounded-lg" title="Delete">
+                  <button onClick={() => setConfirmDelete(doc)} className="p-1.5 hover:bg-gray-100 rounded-lg" title="Delete">
                     <HiTrash className="w-4 h-4 text-red-400" />
                   </button>
                 </div>
@@ -148,6 +150,17 @@ export default function Documents() {
           </button>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Delete Document?"
+        message={`Are you sure you want to delete "${confirmDelete?.title}"? This will also remove it from Google Drive. This cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger
+        onConfirm={async () => { await handleDelete(confirmDelete); setConfirmDelete(null); }}
+        onCancel={() => setConfirmDelete(null)}
+      />
 
       {/* PDF Preview Modal — uses Google Drive's built-in embed viewer */}
       <Modal open={!!preview} onClose={() => setPreview(null)} title={preview?.title || 'Preview'}>

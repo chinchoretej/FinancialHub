@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useCollection } from '../hooks/useFirestore';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
 import { HiOutlineReceiptPercent, HiPlus, HiTrash, HiMagnifyingGlass, HiXMark } from 'react-icons/hi2';
 import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
@@ -17,6 +18,7 @@ export default function Expenses() {
   const [form, setForm] = useState(emptyExpense);
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
 
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -195,7 +197,7 @@ export default function Expenses() {
                   </div>
                   {e.notes && <p className="text-xs text-gray-500 mt-0.5 truncate">{e.notes}</p>}
                 </div>
-                <button onClick={() => remove(e.id)} className="p-1.5 hover:bg-gray-100 rounded-lg ml-2 shrink-0">
+                <button onClick={() => setConfirmDelete(e)} className="p-1.5 hover:bg-gray-100 rounded-lg ml-2 shrink-0">
                   <HiTrash className="w-4 h-4 text-red-400" />
                 </button>
               </div>
@@ -240,6 +242,17 @@ export default function Expenses() {
           </button>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Delete Expense?"
+        message={`Are you sure you want to delete this ${confirmDelete?.category} expense of ₹${Number(confirmDelete?.amount || 0).toLocaleString('en-IN')}? This cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger
+        onConfirm={async () => { await remove(confirmDelete.id); setConfirmDelete(null); }}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }

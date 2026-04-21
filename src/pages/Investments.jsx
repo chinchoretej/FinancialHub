@@ -21,6 +21,7 @@ export default function Investments() {
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [payInvestment, setPayInvestment] = useState(null);
   const [confirmUnpay, setConfirmUnpay] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
   const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
@@ -161,7 +162,7 @@ export default function Investments() {
                     <button onClick={() => openEdit(inv)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                       <HiPencil className="w-4 h-4 text-gray-400" />
                     </button>
-                    <button onClick={() => remove(inv.id)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                    <button onClick={() => setConfirmDelete(inv)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                       <HiTrash className="w-4 h-4 text-red-400" />
                     </button>
                   </div>
@@ -204,6 +205,17 @@ export default function Investments() {
           </button>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Delete Investment?"
+        message={`Are you sure you want to delete "${confirmDelete?.name}"? This cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger
+        onConfirm={async () => { await remove(confirmDelete.id); setConfirmDelete(null); }}
+        onCancel={() => setConfirmDelete(null)}
+      />
 
       {/* Confirm invest for this month */}
       <ConfirmDialog
