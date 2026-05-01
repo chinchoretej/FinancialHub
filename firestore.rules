@@ -1,10 +1,109 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null
+
+    // -----------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------
+    function isOwner() {
+      return request.auth != null
         && (request.auth.token.email == "chinchoretej@gmail.com"
          || request.auth.token.email == "dipalishirude7@gmail.com");
+    }
+
+    function isPositiveNumber(v) {
+      return v is number && v > 0;
+    }
+
+    function isNonNegativeNumber(v) {
+      return v is number && v >= 0;
+    }
+
+    function nonEmptyString(v) {
+      return v is string && v.size() > 0;
+    }
+
+    // -----------------------------------------------------------------
+    // Legacy collections (web app + Android client write directly).
+    // We keep the previous "auth + allow-list" rule so existing UI keeps
+    // working while we migrate to the callable-only path.
+    // -----------------------------------------------------------------
+    match /loans/{loanId} {
+      allow read: if isOwner();
+      // Clients may create / edit base loan fields. The aggregate fields
+      // (disbursedAmount, emi, preEmi, ...) are owned by Cloud Functions
+      // but admin SDK writes bypass these rules anyway.
+      allow create, update, delete: if isOwner();
+    }
+
+    match /demands/{demandId} {
+      allow read, create, update, delete: if isOwner();
+    }
+
+    match /payments/{paymentId} {
+      allow read, create, update, delete: if isOwner();
+    }
+
+    match /flatCost/{docId} {
+      allow read, create, update, delete: if isOwner();
+    }
+
+    // Other existing collections - same rule.
+    match /expenses/{docId}        { allow read, write: if isOwner(); }
+    match /bills/{docId}           { allow read, write: if isOwner(); }
+    match /billPayments/{docId}    { allow read, write: if isOwner(); }
+    match /investments/{docId}     { allow read, write: if isOwner(); }
+    match /investmentPayments/{d}  { allow read, write: if isOwner(); }
+    match /insurance/{docId}       { allow read, write: if isOwner(); }
+    match /documents/{docId}       { allow read, write: if isOwner(); }
+    match /settings/{docId}        { allow read, write: if isOwner(); }
+    match /userProfile/{docId}     { allow read, write: if isOwner(); }
+
+    // -----------------------------------------------------------------
+    // New aggregate-managed collections.
+    // Reads: allowed for owners.
+    // Writes: only allowed via Cloud Functions (admin SDK bypasses rules).
+    // The validate() blocks below are belt-and-braces: if you ever loosen
+    // the deny-by-default write, the data shape stays sane.
+    // -----------------------------------------------------------------
+    match /disbursements/{disbursementId} {
+      allow read: if isOwner();
+      allow write: if false; // use addDisbursement callable
+    }
+
+    match /builderStages/{stageId} {
+      allow read: if isOwner();
+      allow write: if false; // use addBuilderStage callable
+    }
+
+    match /builderPayments/{paymentId} {
+      allow read: if isOwner();
+      allow write: if false; // use addBuilderPayment callable
+    }
+
+    match /utrIndex/{utrNumber} {
+      // Owners may peek at the index for UI hints (e.g. "this UTR was
+      // recorded on 2025-12-04") but cannot mutate it.
+      allow read: if isOwner();
+      allow write: if false;
+    }
+
+    match /projectMeta/{loanId} {
+      // Allow owners to seed/edit project-wide values like agreementValue,
+      // builderName, etc. Functions also write here for aggregates.
+      allow read: if isOwner();
+      allow create: if isOwner()
+        && (!('agreementValue' in request.resource.data)
+            || isPositiveNumber(request.resource.data.agreementValue));
+      allow update: if isOwner()
+        && (!('agreementValue' in request.resource.data)
+            || isPositiveNumber(request.resource.data.agreementValue));
+      allow delete: if isOwner();
+    }
+
+    // Default deny for anything not matched above.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

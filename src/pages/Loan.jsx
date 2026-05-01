@@ -4,12 +4,14 @@ import Card from '../components/Card';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
+import { addDisbursement, recomputeLoanAggregates } from '../lib/cloudFunctions';
 import {
   HiOutlineBanknotes, HiPlus, HiTrash, HiPencil,
   HiOutlineCurrencyRupee, HiOutlineDocumentText,
   HiOutlineArrowTrendingUp, HiOutlineClock,
   HiOutlineBuildingOffice2, HiOutlineCalculator,
-  HiOutlineInformationCircle,
+  HiOutlineInformationCircle, HiOutlineArrowPath, HiOutlineCheckCircle,
+  HiOutlineExclamationTriangle,
 } from 'react-icons/hi2';
 
 const PAYMENT_CATEGORIES = ['Agreement Value', 'Stamp Duty', 'Registration', 'GST', 'Legal Charges', 'Maintenance', 'Other Charges'];
@@ -48,6 +50,9 @@ const emptyPayment = {
 const emptyFlatCost = {
   agreementValue: '', stampDuty: '', gst: '', registrationCharges: '', legalCharges: '',
   maintenance: '', otherCharges: '',
+};
+const emptyDisbursement = {
+  loanId: '', amount: '', disbursementDate: '', utrNumber: '', stageId: '', remarks: '',
 };
 
 function DonutChart({ segments, total, fmt }) {
@@ -97,6 +102,9 @@ export default function Loan() {
   const { data: demands, add: addDemand, update: updateDemand, remove: removeDemand } = useCollection('demands', 'createdAt');
   const { data: payments, add: addPayment, update: updatePayment, remove: removePayment } = useCollection('payments', 'createdAt');
   const { data: flatCostDocs, add: addFlatCost, update: updateFlatCost } = useCollection('flatCost', 'createdAt');
+  // New collection - read-only on the client; writes go through the
+  // addDisbursement Cloud Function which keeps loan aggregates in sync.
+  const { data: disbursements } = useCollection('disbursements', 'disbursementDate');
 
   const flatCost = flatCostDocs[0] || null;
 
@@ -106,6 +114,10 @@ export default function Loan() {
   const [editId, setEditId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [showAllRecords, setShowAllRecords] = useState(false);
+  // Cloud Function feedback (banner above the active tab).
+  const [actionState, setActionState] = useState(null); // { kind: 'ok'|'err', text }
+  const [submitting, setSubmitting] = useState(false);
+  const [recomputingId, setRecomputingId] = useState(null);
 
   const overview = useMemo(() => {
     const fc = flatCost || {};
@@ -200,8 +212,58 @@ export default function Loan() {
       }
     } else if (modal === 'flatCost') {
       flatCost ? await updateFlatCost(flatCost.id, form) : await addFlatCost(form);
+    } else if (modal === 'disbursement') {
+      // Cloud Function path - close immediately so the user can't double
+      // submit while the network call is in flight, then surface success
+      // or error in the inline banner.
+      const payload = {
+        loanId: form.loanId,
+        amount: Number(form.amount),
+        disbursementDate: form.disbursementDate,
+        utrNumber: form.utrNumber,
+        stageId: form.stageId || undefined,
+        remarks: form.remarks || '',
+      };
+      setSubmitting(true);
+      setModal(null);
+      try {
+        const result = await addDisbursement(payload);
+        setActionState({
+          kind: 'ok',
+          text: `Disbursement saved \u00b7 disbursed total ${fmt(result.loanAggregates.disbursedAmount)} \u00b7 ${result.loanAggregates.disbursementPercentage.toFixed(1)}% of sanction`,
+        });
+      } catch (err) {
+        setActionState({
+          kind: 'err',
+          text: `${err.code || 'error'}: ${err.message}`,
+        });
+        // re-open the modal so the user can correct & retry
+        setModal('disbursement');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
     }
     setModal(null);
+  };
+
+  const handleRecompute = async (loanId) => {
+    setRecomputingId(loanId);
+    setActionState(null);
+    try {
+      const result = await recomputeLoanAggregates({ loanId });
+      setActionState({
+        kind: 'ok',
+        text: `Recomputed: disbursed ${fmt(result.loanAggregates.disbursedAmount)}, EMI ${fmt(result.loanAggregates.emi)}, Pre-EMI ${fmt(result.loanAggregates.preEmi)}`,
+      });
+    } catch (err) {
+      setActionState({
+        kind: 'err',
+        text: `${err.code || 'error'}: ${err.message}`,
+      });
+    } finally {
+      setRecomputingId(null);
+    }
   };
 
   const confirmDelete = (type, id, label) => setDeleteConfirm({ type, id, label });
@@ -226,16 +288,25 @@ export default function Loan() {
   const subTabs = [
     { key: 'overview', label: 'Overview' },
     { key: 'loans', label: 'Loans' },
+    { key: 'disbursements', label: 'Disbursements' },
     { key: 'demands', label: 'Demands' },
     { key: 'payments', label: 'Payments' },
   ];
 
+  const fmtTimestamp = (ts) => {
+    if (!ts) return '-';
+    // Firestore Timestamp from server has .seconds; parsed snapshot has .toDate
+    const d = ts.toDate ? ts.toDate() : (ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts));
+    if (Number.isNaN(d.getTime?.())) return '-';
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+      <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl overflow-x-auto">
         {subTabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`flex-1 py-2 text-xs sm:text-sm rounded-lg transition-colors ${
+            className={`flex-1 min-w-fit px-2 py-2 text-xs sm:text-sm rounded-lg transition-colors whitespace-nowrap ${
               tab === t.key ? 'bg-white dark:bg-gray-700 font-medium shadow-sm dark:text-white' : 'text-gray-500 dark:text-gray-400'
             }`}
           >
@@ -243,6 +314,23 @@ export default function Loan() {
           </button>
         ))}
       </div>
+
+      {actionState && (
+        <div
+          className={`flex items-start gap-2 p-3 rounded-xl text-xs ${
+            actionState.kind === 'ok'
+              ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800'
+              : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+          }`}
+          role={actionState.kind === 'err' ? 'alert' : 'status'}
+        >
+          {actionState.kind === 'ok'
+            ? <HiOutlineCheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            : <HiOutlineExclamationTriangle className="w-4 h-4 mt-0.5 shrink-0" />}
+          <span className="flex-1">{actionState.text}</span>
+          <button onClick={() => setActionState(null)} className="text-[11px] hover:underline shrink-0">Dismiss</button>
+        </div>
+      )}
 
       {/* ========== OVERVIEW TAB ========== */}
       {tab === 'overview' && (
@@ -461,6 +549,14 @@ export default function Loan() {
                     <p className="text-xs text-gray-500 dark:text-gray-400">A/C: {loan.loanAccountNumber}</p>
                   </div>
                   <div className="flex gap-1">
+                    <button
+                      onClick={() => handleRecompute(loan.id)}
+                      disabled={recomputingId === loan.id}
+                      title="Recompute aggregates from disbursements + builder payments"
+                      className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg disabled:opacity-50"
+                    >
+                      <HiOutlineArrowPath className={`w-4 h-4 text-indigo-500 ${recomputingId === loan.id ? 'animate-spin' : ''}`} />
+                    </button>
                     <button onClick={() => openEdit('loan', loan)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><HiPencil className="w-4 h-4 text-gray-400" /></button>
                     <button onClick={() => confirmDelete('loan', loan.id, loan.bankName)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><HiTrash className="w-4 h-4 text-red-400" /></button>
                   </div>
@@ -468,15 +564,77 @@ export default function Loan() {
                 <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
                   <div><span className="text-gray-500 dark:text-gray-400">Sanctioned:</span> <span className="dark:text-white">{fmt(loan.sanctionAmount)}</span></div>
                   <div><span className="text-gray-500 dark:text-gray-400">Rate:</span> <span className="dark:text-white">{loan.interestRate}%</span></div>
-                  <div><span className="text-gray-500 dark:text-gray-400">EMI:</span> <span className="dark:text-white">{fmt(loan.emiAmount)}</span></div>
-                  <div><span className="text-gray-500 dark:text-gray-400">Tenure:</span> <span className="dark:text-white">{loan.tenure} months</span></div>
-                  <div><span className="text-gray-500 dark:text-gray-400">Disbursed:</span> <span className="dark:text-white">{fmt(loan.totalDisbursed)}</span></div>
-                  <div><span className="text-gray-500 dark:text-gray-400">Remaining:</span> <span className="dark:text-white">{fmt(loan.remainingAmount)}</span></div>
+                  <div><span className="text-gray-500 dark:text-gray-400">EMI:</span> <span className="dark:text-white">{fmt(loan.emi || loan.emiAmount)}</span></div>
+                  <div><span className="text-gray-500 dark:text-gray-400">Pre-EMI:</span> <span className="dark:text-white">{fmt(loan.preEmi || loan.preEmiAmount)}</span></div>
+                  <div><span className="text-gray-500 dark:text-gray-400">Tenure:</span> <span className="dark:text-white">{loan.tenure || (loan.tenureYears && `${loan.tenureYears * 12}`) || '-'} months</span></div>
+                  <div><span className="text-gray-500 dark:text-gray-400">Disbursed:</span> <span className="dark:text-white">{fmt(loan.disbursedAmount || loan.totalDisbursed)}</span></div>
+                  <div><span className="text-gray-500 dark:text-gray-400">Remaining:</span> <span className="dark:text-white">{fmt(loan.totalLoanOutstanding || loan.remainingAmount)}</span></div>
+                  <div><span className="text-gray-500 dark:text-gray-400">Disbursed %:</span> <span className="dark:text-white">{(loan.disbursementPercentage ?? 0).toFixed(1)}%</span></div>
                 </div>
+                {loan.sanctionAmount > 0 && (
+                  <div className="mt-3 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-500"
+                      style={{ width: `${Math.min(100, loan.disbursementPercentage || 0)}%` }}
+                    />
+                  </div>
+                )}
               </Card>
             ))}
           </div>
         )
+      )}
+
+      {/* ========== DISBURSEMENTS TAB ========== */}
+      {tab === 'disbursements' && (
+        <div className="space-y-3">
+          {loans.length === 0 ? (
+            <EmptyState icon={HiOutlineBanknotes} message="Add a loan first before recording disbursements" />
+          ) : (
+            <>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => openAdd('disbursement', { ...emptyDisbursement, loanId: loans[0]?.id || '', disbursementDate: new Date().toISOString().slice(0, 10) })}
+                  className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1"
+                >
+                  <HiPlus className="w-4 h-4" /> Add Disbursement
+                </button>
+              </div>
+
+              {disbursements.length === 0 ? (
+                <EmptyState icon={HiOutlineBanknotes} message="No disbursements yet" />
+              ) : (
+                disbursements.map(d => {
+                  const loan = loans.find(l => l.id === d.loanId);
+                  return (
+                    <Card key={d.id}>
+                      <div className="flex justify-between items-start">
+                        <div className="min-w-0">
+                          <p className="font-semibold dark:text-white truncate">
+                            {fmt(d.amount)}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {loan ? loan.bankName : 'Unknown loan'} {'\u00b7'} {fmtTimestamp(d.disbursementDate)}
+                          </p>
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full font-mono">
+                          UTR: {d.utrNumber}
+                        </span>
+                      </div>
+                      {d.remarks && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{d.remarks}</p>
+                      )}
+                    </Card>
+                  );
+                })
+              )}
+
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 px-1">
+                Disbursements are saved through a Cloud Function that atomically updates the loan&apos;s disbursed total, EMI, Pre-EMI and outstanding balance. UTR is mandatory and globally unique.
+              </p>
+            </>
+          )}
+        </div>
       )}
 
       {/* ========== DEMANDS TAB ========== */}
@@ -750,11 +908,73 @@ export default function Loan() {
         </div>
       </Modal>
 
+      {/* ========== DISBURSEMENT MODAL ========== */}
+      <Modal open={modal === 'disbursement'} onClose={() => setModal(null)} title="Add Disbursement">
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Loan</label>
+            <select
+              value={form.loanId || ''}
+              onChange={e => set('loanId', e.target.value)}
+              className={inputCls}
+            >
+              <option value="">Select loan...</option>
+              {loans.map(l => (
+                <option key={l.id} value={l.id}>
+                  {l.bankName} {l.loanAccountNumber ? `(${l.loanAccountNumber})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Amount (₹)</label>
+            <input
+              type="number" inputMode="decimal" step="0.01" min="0"
+              value={form.amount || ''} onChange={e => set('amount', e.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Disbursement Date</label>
+            <input
+              type="date"
+              value={form.disbursementDate || ''} onChange={e => set('disbursementDate', e.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">UTR / Transaction Ref</label>
+            <input
+              type="text" value={form.utrNumber || ''}
+              onChange={e => set('utrNumber', e.target.value.toUpperCase())}
+              className={`${inputCls} font-mono uppercase`}
+              placeholder="HDFCN12345678901"
+            />
+            <p className="text-[10px] text-gray-400 mt-1">Mandatory. Letters and digits only. Must be unique across the workspace.</p>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Remarks (optional)</label>
+            <textarea
+              rows="2" value={form.remarks || ''} onChange={e => set('remarks', e.target.value)}
+              className={inputCls} placeholder="e.g. Slab milestone disbursement"
+            />
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={submitting || !form.loanId || !form.amount || !form.disbursementDate || !form.utrNumber}
+            className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {submitting ? 'Saving...' : 'Save Disbursement'}
+          </button>
+        </div>
+      </Modal>
+
       {/* Floating Add Button */}
       <button
         onClick={() => {
           if (tab === 'loans') openAdd('loan', emptyLoan);
           else if (tab === 'demands') openAdd('demand', emptyDemand);
+          else if (tab === 'disbursements') openAdd('disbursement', { ...emptyDisbursement, loanId: loans[0]?.id || '', disbursementDate: new Date().toISOString().slice(0, 10) });
           else openAdd('payment', emptyPayment);
         }}
         className="fixed bottom-20 right-6 z-40 p-3.5 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 active:scale-95 transition-all"

@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, browserLocalPersistence, setPersistence, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -15,6 +16,14 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 setPersistence(auth, browserLocalPersistence);
 export const db = getFirestore(app);
+
+// Cloud Functions are deployed in asia-south1 (Mumbai) for low RTT.
+// Set VITE_USE_FUNCTIONS_EMULATOR=1 in .env.local to point at the local
+// emulator (firebase emulators:start).
+export const functions = getFunctions(app, 'asia-south1');
+if (import.meta.env.VITE_USE_FUNCTIONS_EMULATOR === '1') {
+  connectFunctionsEmulator(functions, 'localhost', 5001);
+}
 
 // Google provider only used for Drive access on Documents page
 export const googleProvider = new GoogleAuthProvider();

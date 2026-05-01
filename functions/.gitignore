@@ -1,0 +1,4 @@
+node_modules
+# Compiled TypeScript output (root only - do NOT match src/lib which is source code).
+/lib
+*.log

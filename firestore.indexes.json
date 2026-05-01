@@ -1,0 +1,29 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "disbursements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "loanId",            "order": "ASCENDING" },
+        { "fieldPath": "disbursementDate",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "builderStages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "loanId", "order": "ASCENDING" },
+        { "fieldPath": "order",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "builderPayments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "stageId",      "order": "ASCENDING" },
+        { "fieldPath": "paymentDate",  "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
