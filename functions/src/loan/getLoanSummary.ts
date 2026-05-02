@@ -3,7 +3,12 @@ import { logger } from "firebase-functions/v2";
 import { requireAllowedCaller } from "../lib/auth";
 import { badRequest, notFound } from "../lib/errors";
 import { Collections, db } from "../lib/firestore";
-import { computeLoanFields, tenureYearsToMonths } from "../lib/loan-math";
+import {
+  computeLoanFields,
+  normaliseAdjustmentType,
+  normaliseRepaymentType,
+  tenureYearsToMonths,
+} from "../lib/loan-math";
 import { round2 } from "../lib/money";
 
 interface GetLoanSummaryRequest {
@@ -59,6 +64,10 @@ export const getLoanSummary = onCall<GetLoanSummaryRequest>(
       disbursedAmount,
       interestRate: Number(loan.interestRate) || 0,
       tenureMonths,
+      currentTenureMonths: Number(loan.currentTenureMonths) || undefined,
+      repaymentType: normaliseRepaymentType(loan.repaymentType),
+      emiAdjustmentType: normaliseAdjustmentType(loan.emiAdjustmentType),
+      fixedEmi: Number(loan.fixedEmi) || undefined,
     });
 
     // Pull builderPayments per stage in parallel rather than via a single

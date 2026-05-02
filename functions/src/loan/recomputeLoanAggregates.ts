@@ -3,7 +3,12 @@ import { logger } from "firebase-functions/v2";
 import { requireAllowedCaller } from "../lib/auth";
 import { badRequest, notFound } from "../lib/errors";
 import { Collections, db, FieldValue } from "../lib/firestore";
-import { computeLoanFields, tenureYearsToMonths } from "../lib/loan-math";
+import {
+  computeLoanFields,
+  normaliseAdjustmentType,
+  normaliseRepaymentType,
+  tenureYearsToMonths,
+} from "../lib/loan-math";
 import { round2 } from "../lib/money";
 
 interface RecomputeRequest {
@@ -54,11 +59,19 @@ export const recomputeLoanAggregates = onCall<RecomputeRequest>(
       tenureYearsToMonths(loan.tenureYears) ||
       Number(loan.tenure) ||
       0;
+    const repaymentType = normaliseRepaymentType(loan.repaymentType);
+    const emiAdjustmentType = normaliseAdjustmentType(loan.emiAdjustmentType);
+    const fixedEmi = Number(loan.fixedEmi) || undefined;
     const computed = computeLoanFields({
       sanctionAmount,
       disbursedAmount,
       interestRate: Number(loan.interestRate) || 0,
       tenureMonths,
+      currentTenureMonths:
+        emiAdjustmentType === "RECALCULATE_EMI" ? tenureMonths : undefined,
+      repaymentType,
+      emiAdjustmentType,
+      fixedEmi: emiAdjustmentType === "KEEP_EMI_EXTEND_TENURE" ? fixedEmi : undefined,
     });
 
     // Re-aggregate each stage from its payments.
@@ -111,6 +124,10 @@ export const recomputeLoanAggregates = onCall<RecomputeRequest>(
         emiAmount: computed.emi,
         preEmi: computed.preEmi,
         preEmiAmount: computed.preEmi,
+        monthlyPayment: computed.monthlyPayment,
+        currentTenureMonths: computed.currentTenureMonths,
+        repaymentType,
+        emiAdjustmentType,
         isFullyDisbursed: computed.isFullyDisbursed,
         updatedAt: FieldValue.serverTimestamp(),
       }),
@@ -131,6 +148,10 @@ export const recomputeLoanAggregates = onCall<RecomputeRequest>(
         disbursementPercentage: computed.disbursementPercentage,
         emi: computed.emi,
         preEmi: computed.preEmi,
+        monthlyPayment: computed.monthlyPayment,
+        currentTenureMonths: computed.currentTenureMonths,
+        repaymentType,
+        emiAdjustmentType,
       },
       stagesUpdated: stagesSnap.size,
     };

@@ -6,6 +6,7 @@ import { Collections, db } from "../lib/firestore";
 import {
   computeLoanFields,
   EmiAdjustmentType,
+  generateAmortizationSchedule as generateSchedule,
   LoanSnapshot,
   normaliseAdjustmentType,
   normaliseRepaymentType,
@@ -13,15 +14,17 @@ import {
   tenureYearsToMonths,
 } from "../lib/loan-math";
 
-interface CalculateLoanRequest {
+interface GenerateScheduleRequest {
   loanId?: string;
-  /** Optional overrides - useful for "what-if" calculations from the client. */
+  /** Optional - if omitted, schedule starts from today (server time). */
+  startDate?: string; // ISO yyyy-mm-dd
+  /** What-if overrides; same shape as calculateLoanDetails.overrides. */
   overrides?: {
     sanctionAmount?: number;
     disbursedAmount?: number;
     interestRate?: number;
-    tenureYears?: number;
     tenureMonths?: number;
+    tenureYears?: number;
     currentTenureMonths?: number;
     repaymentType?: RepaymentType;
     emiAdjustmentType?: EmiAdjustmentType;
@@ -30,19 +33,27 @@ interface CalculateLoanRequest {
 }
 
 /**
- * Pure read-only computation. Given a loan doc id (and optional overrides
- * for what-if scenarios) returns EMI / Pre-EMI / outstanding / pct disbursed
- * along with the active tenure and the repayment configuration in effect.
+ * Returns the full month-by-month amortization schedule for a loan plus a
+ * pre-shaped `graph` array suitable for charting libs (one point per month
+ * with `interest`, `principal`, `balance`).
  *
- * Does NOT write back to Firestore; the writing functions (addDisbursement /
- * recomputeLoanAggregates) are responsible for persisting.
+ * The schedule honours the loan's `repaymentType` and `emiAdjustmentType`:
+ *
+ *   - FULL_EMI: standard reducing-balance amortization on the disbursed
+ *     amount with the active tenure (`currentTenureMonths`, fall-back
+ *     `tenureMonths`). The last row truncates the residual balance to 0
+ *     to absorb cumulative rounding drift.
+ *
+ *   - PRE_EMI: each row is interest-only on the disbursed amount, principal
+ *     never reduces. Useful while construction is still ongoing.
+ *
+ * Pure read-only - never writes to Firestore.
  */
-export const calculateLoanDetails = onCall<CalculateLoanRequest>(
+export const generateAmortizationSchedule = onCall<GenerateScheduleRequest>(
   { region: "asia-south1", cors: true },
   async (req) => {
     requireAllowedCaller(req);
-
-    const { loanId, overrides } = req.data ?? {};
+    const { loanId, overrides, startDate } = req.data ?? {};
     if (!loanId && !overrides) {
       badRequest("Either loanId or overrides is required");
     }
@@ -61,7 +72,7 @@ export const calculateLoanDetails = onCall<CalculateLoanRequest>(
       const tenureMonths =
         Number(data.tenureMonths) ||
         tenureYearsToMonths(data.tenureYears) ||
-        Number(data.tenure) || // legacy field name from the web app
+        Number(data.tenure) ||
         0;
       snapshot = {
         sanctionAmount: Number(data.sanctionAmount) || 0,
@@ -69,8 +80,7 @@ export const calculateLoanDetails = onCall<CalculateLoanRequest>(
           Number(data.disbursedAmount) || Number(data.totalDisbursed) || 0,
         interestRate: Number(data.interestRate) || 0,
         tenureMonths,
-        currentTenureMonths:
-          Number(data.currentTenureMonths) || undefined,
+        currentTenureMonths: Number(data.currentTenureMonths) || undefined,
         repaymentType: normaliseRepaymentType(data.repaymentType),
         emiAdjustmentType: normaliseAdjustmentType(data.emiAdjustmentType),
         fixedEmi: Number(data.fixedEmi) || undefined,
@@ -106,8 +116,25 @@ export const calculateLoanDetails = onCall<CalculateLoanRequest>(
       }
     }
 
-    const computed = computeLoanFields(snapshot);
-    logger.info("calculateLoanDetails", { loanId, snapshot, computed });
-    return { input: snapshot, computed };
+    const start = parseStartDate(startDate);
+    const schedule = generateSchedule(snapshot, { startDate: start });
+
+    logger.info("generateAmortizationSchedule", {
+      loanId,
+      months: schedule.rows.length,
+      principal: schedule.summary.principal,
+    });
+
+    return {
+      input: snapshot,
+      computed: computeLoanFields(snapshot),
+      schedule,
+    };
   },
 );
+
+function parseStartDate(iso: string | undefined): Date | undefined {
+  if (!iso) return undefined;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}

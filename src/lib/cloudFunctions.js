@@ -29,10 +29,14 @@ function unwrap(callable) {
   };
 }
 
-export const calculateLoanDetails    = unwrap(httpsCallable(functions, 'calculateLoanDetails'));
-export const getLoanSummary          = unwrap(httpsCallable(functions, 'getLoanSummary'));
-export const recomputeLoanAggregates = unwrap(httpsCallable(functions, 'recomputeLoanAggregates'));
+export const calculateLoanDetails         = unwrap(httpsCallable(functions, 'calculateLoanDetails'));
+export const getLoanSummary               = unwrap(httpsCallable(functions, 'getLoanSummary'));
+export const recomputeLoanAggregates      = unwrap(httpsCallable(functions, 'recomputeLoanAggregates'));
+export const generateAmortizationSchedule = unwrap(httpsCallable(functions, 'generateAmortizationSchedule'));
+export const calculateMonthlyBreakdown    = unwrap(httpsCallable(functions, 'calculateMonthlyBreakdown'));
 
 export const addDisbursement   = unwrap(httpsCallable(functions, 'addDisbursement'));
+// Spec-compatible alias - same handler on the server.
+export const applyDisbursement = unwrap(httpsCallable(functions, 'applyDisbursement'));
 export const addBuilderStage   = unwrap(httpsCallable(functions, 'addBuilderStage'));
 export const addBuilderPayment = unwrap(httpsCallable(functions, 'addBuilderPayment'));

@@ -1,17 +1,23 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useCollection } from '../hooks/useFirestore';
 import Card from '../components/Card';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
-import { addDisbursement, recomputeLoanAggregates } from '../lib/cloudFunctions';
+import {
+  addDisbursement,
+  calculateMonthlyBreakdown,
+  generateAmortizationSchedule,
+  recomputeLoanAggregates,
+} from '../lib/cloudFunctions';
 import {
   HiOutlineBanknotes, HiPlus, HiTrash, HiPencil,
   HiOutlineCurrencyRupee, HiOutlineDocumentText,
   HiOutlineArrowTrendingUp, HiOutlineClock,
   HiOutlineBuildingOffice2, HiOutlineCalculator,
   HiOutlineInformationCircle, HiOutlineArrowPath, HiOutlineCheckCircle,
-  HiOutlineExclamationTriangle,
+  HiOutlineExclamationTriangle, HiOutlineBellAlert,
+  HiOutlineChartBar, HiOutlineFire, HiOutlineArrowsRightLeft,
 } from 'react-icons/hi2';
 
 const PAYMENT_CATEGORIES = ['Agreement Value', 'Stamp Duty', 'Registration', 'GST', 'Legal Charges', 'Maintenance', 'Other Charges'];
@@ -97,6 +103,348 @@ const getPaymentTotal = (p) => {
   return (Number(p.amountPaid) || 0) + (Number(p.gstPaid) || 0);
 };
 
+// --- date helpers used by timeline + alerts ---
+const toDate = (val) => {
+  if (!val) return null;
+  if (val.toDate) return val.toDate(); // Firestore Timestamp
+  if (val.seconds) return new Date(val.seconds * 1000);
+  const d = new Date(val);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+const daysBetween = (a, b) => Math.round((a.getTime() - b.getTime()) / 86400000);
+const formatINR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const formatINRCompact = (n) => {
+  const v = Number(n || 0);
+  if (v >= 1_00_00_000) return `₹${(v / 1_00_00_000).toFixed(1)}Cr`;
+  if (v >= 1_00_000)    return `₹${(v / 1_00_000).toFixed(1)}L`;
+  if (v >= 1_000)       return `₹${(v / 1_000).toFixed(1)}K`;
+  return `₹${v.toFixed(0)}`;
+};
+
+/* -------------------------------------------------------------------------
+ * Next slab payment due banner.
+ *
+ * Picks the demand with the earliest dueDate that is still Pending or Partial
+ * and renders a tonal banner. Colour bumps by urgency:
+ *   red    - overdue
+ *   amber  - due within 14 days
+ *   indigo - upcoming
+ *
+ * Returns null when nothing's due so the caller can drop the slot from the
+ * layout instead of rendering an empty card.
+ * ----------------------------------------------------------------------- */
+function NextPaymentAlert({ demands, onView }) {
+  const next = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const pending = demands
+      .filter(d => d.status === 'Pending' || d.status === 'Partial')
+      .filter(d => d.dueDate)
+      .map(d => ({ ...d, _due: toDate(d.dueDate) }))
+      .filter(d => d._due)
+      .sort((a, b) => a._due - b._due);
+    return pending[0] || null;
+  }, [demands]);
+
+  if (!next) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = daysBetween(next._due, today);
+  const overdue = days < 0;
+  const soon = days >= 0 && days <= 14;
+
+  const palette = overdue
+    ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
+    : soon
+      ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+      : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800';
+
+  const lead = overdue
+    ? `Overdue by ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'}`
+    : days === 0
+      ? 'Due today'
+      : `Due in ${days} day${days === 1 ? '' : 's'}`;
+
+  const total = (Number(next.demandAmount) || 0) + (Number(next.gstAmount) || 0) || Number(next.totalDemand) || 0;
+
+  return (
+    <div className={`flex items-start gap-2 p-3 rounded-xl text-xs border ${palette}`} role={overdue ? 'alert' : 'status'}>
+      <HiOutlineBellAlert className="w-4 h-4 mt-0.5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold truncate">
+          Next slab payment: {next.constructionStage || 'Builder demand'}
+        </p>
+        <p className="opacity-80">
+          {lead} {'\u00b7'} {formatINR(total)} {'\u00b7'} due {next._due.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+        </p>
+      </div>
+      {onView && (
+        <button onClick={onView} className="text-[11px] font-medium hover:underline shrink-0">
+          View
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------
+ * Loan timeline (Stage -> Payment -> Disbursement)
+ *
+ * Merges three event types into one chronological list:
+ *   - demand        (a builder slab demand was raised)
+ *   - payment       (a payment was made against a demand)
+ *   - disbursement  (the bank released money against the loan)
+ *
+ * Each entry shows the date, the event icon/colour, the amount and a one-line
+ * description. Payments and disbursements that link to a demand/stage show
+ * that linkage inline so the user can see the chain at a glance.
+ * ----------------------------------------------------------------------- */
+function LoanTimeline({ demands, payments, disbursements, fmtDate }) {
+  const events = useMemo(() => {
+    const items = [];
+
+    demands.forEach(d => {
+      const date = toDate(d.demandDate) || toDate(d.dueDate);
+      if (!date) return;
+      const total = (Number(d.demandAmount) || 0) + (Number(d.gstAmount) || 0) || Number(d.totalDemand) || 0;
+      items.push({
+        id: `demand-${d.id}`,
+        type: 'demand',
+        date,
+        title: d.constructionStage || 'Builder demand',
+        sub: d.status === 'Paid' ? 'Settled' : d.status === 'Partial' ? 'Partially settled' : 'Pending',
+        amount: total,
+        meta: d.dueDate ? `Due ${new Date(d.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}` : '',
+        status: d.status,
+      });
+    });
+
+    payments.forEach(p => {
+      const date = toDate(p.paymentDate);
+      if (!date) return;
+      const linkedDemand = p.demandId ? demands.find(d => d.id === p.demandId) : null;
+      items.push({
+        id: `payment-${p.id}`,
+        type: 'payment',
+        date,
+        title: p.particulars || linkedDemand?.constructionStage || p.category || 'Payment',
+        sub: linkedDemand ? `Settles: ${linkedDemand.constructionStage}` : (p.category || 'Direct payment'),
+        amount: getPaymentTotal(p),
+        meta: p.paidBy === 'Bank' ? 'Paid by bank' : 'Paid from own funds',
+        status: p.status,
+      });
+    });
+
+    disbursements.forEach(d => {
+      const date = toDate(d.disbursementDate);
+      if (!date) return;
+      items.push({
+        id: `disb-${d.id}`,
+        type: 'disbursement',
+        date,
+        title: 'Bank disbursement',
+        sub: d.remarks || (d.stageId ? 'Linked to stage' : 'Loan release'),
+        amount: Number(d.amount) || 0,
+        meta: d.utrNumber ? `UTR ${d.utrNumber}` : '',
+        status: 'completed',
+      });
+    });
+
+    return items.sort((a, b) => b.date - a.date);
+  }, [demands, payments, disbursements]);
+
+  if (events.length === 0) {
+    return <EmptyState icon={HiOutlineClock} message="Nothing on the timeline yet" />;
+  }
+
+  const styles = {
+    demand:       { dot: 'bg-amber-500',  bar: 'bg-amber-100 dark:bg-amber-900/30',  txt: 'text-amber-700 dark:text-amber-400',  label: 'Demand'       },
+    payment:      { dot: 'bg-emerald-500', bar: 'bg-emerald-100 dark:bg-emerald-900/30', txt: 'text-emerald-700 dark:text-emerald-400', label: 'Payment'      },
+    disbursement: { dot: 'bg-indigo-500', bar: 'bg-indigo-100 dark:bg-indigo-900/30', txt: 'text-indigo-700 dark:text-indigo-400', label: 'Disbursement' },
+  };
+
+  return (
+    <ol className="relative pl-5">
+      <span className="absolute left-1.5 top-1 bottom-1 w-px bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
+      {events.map(e => {
+        const s = styles[e.type];
+        return (
+          <li key={e.id} className="relative pb-3">
+            <span className={`absolute -left-3.5 top-1.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-gray-800 ${s.dot}`} />
+            <div className="flex justify-between items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className={`text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded ${s.bar} ${s.txt}`}>
+                    {s.label}
+                  </span>
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400">{fmtDate(e.date)}</span>
+                </div>
+                <p className="text-sm font-medium dark:text-white truncate mt-0.5">{e.title}</p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{e.sub}</p>
+                {e.meta && (
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">{e.meta}</p>
+                )}
+              </div>
+              <p className="text-sm font-semibold dark:text-white whitespace-nowrap">
+                {formatINR(e.amount)}
+              </p>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/* -------------------------------------------------------------------------
+ * Pre-EMI vs Full EMI scenario comparison.
+ *
+ * Takes the two raw payloads from generateAmortizationSchedule and renders
+ * a side-by-side card pair plus a verdict line summarising the trade-off.
+ *
+ * The math is already done server-side; we just diff the two summaries.
+ * ----------------------------------------------------------------------- */
+function ScenarioCompare({ full, pre }) {
+  const fullSum = full?.schedule?.summary || {};
+  const preSum = pre?.schedule?.summary || {};
+  const fullMonthly = fullSum.monthlyPayment || 0;
+  const preMonthly = preSum.monthlyPayment || 0;
+  const interestDiff = (fullSum.totalInterest || 0) - (preSum.totalInterest || 0);
+  const monthlyDiff = fullMonthly - preMonthly;
+  const tenure = fullSum.tenureMonths || 0;
+  const cashFlowDiff = monthlyDiff * tenure;
+
+  const Box = ({ tone, label, monthly, totalInterest, finalBalance, note }) => (
+    <div className={`rounded-xl p-3 border ${tone}`}>
+      <p className="text-[10px] uppercase tracking-wide font-semibold opacity-70">{label}</p>
+      <p className="text-base font-bold mt-1">{formatINR(monthly)}<span className="text-[10px] font-normal opacity-70"> /mo</span></p>
+      <div className="grid grid-cols-2 gap-2 mt-2 text-[10px]">
+        <div>
+          <p className="opacity-70">Total interest</p>
+          <p className="font-semibold">{formatINRCompact(totalInterest)}</p>
+        </div>
+        <div>
+          <p className="opacity-70">Final balance</p>
+          <p className="font-semibold">{formatINRCompact(finalBalance)}</p>
+        </div>
+      </div>
+      {note && <p className="text-[10px] opacity-70 mt-1">{note}</p>}
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <Box
+          tone="bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-100"
+          label="Full EMI"
+          monthly={fullMonthly}
+          totalInterest={fullSum.totalInterest}
+          finalBalance={fullSum.finalBalance}
+          note={`${tenure} months, principal cleared at end`}
+        />
+        <Box
+          tone="bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100"
+          label="Pre-EMI (interest only)"
+          monthly={preMonthly}
+          totalInterest={preSum.totalInterest}
+          finalBalance={preSum.finalBalance}
+          note="Principal stays parked - cleared by separate EMI later"
+        />
+      </div>
+
+      <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 p-3 text-[11px] space-y-1.5">
+        <p className="font-semibold text-gray-800 dark:text-gray-100">Verdict over {tenure} months</p>
+        <p className="text-gray-600 dark:text-gray-300">
+          Full EMI costs {' '}
+          <span className={interestDiff >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-red-600 dark:text-red-400 font-semibold'}>
+            {formatINRCompact(Math.abs(interestDiff))}
+          </span>{' '}
+          {interestDiff >= 0 ? 'more' : 'less'} interest than Pre-EMI - because Pre-EMI doesn&apos;t reduce principal so the principal still has to be repaid afterwards.
+        </p>
+        <p className="text-gray-600 dark:text-gray-300">
+          Monthly cash flow:{' '}
+          <span className="font-semibold">
+            +{formatINRCompact(Math.abs(monthlyDiff))} per month
+          </span>{' '}
+          for Full EMI ({formatINRCompact(Math.abs(cashFlowDiff))} extra cash committed across the tenure, but the loan actually closes at the end).
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------
+ * Interest burn chart
+ *
+ * Pure-SVG line chart with a filled area underneath. Shows the monthly
+ * interest the borrower pays for the lifetime of the loan, using the
+ * `calculateMonthlyBreakdown` callable as the data source.
+ *
+ * SVG is intentional - avoids a 50kB charting dependency for a chart we
+ * fully own. Layout is responsive via viewBox.
+ * ----------------------------------------------------------------------- */
+function InterestBurnChart({ data }) {
+  if (!data || data.length === 0) return null;
+
+  const W = 600;
+  const H = 180;
+  const PAD_L = 44;
+  const PAD_R = 12;
+  const PAD_T = 12;
+  const PAD_B = 24;
+
+  const max = Math.max(...data, 1);
+  const min = 0;
+  const innerW = W - PAD_L - PAD_R;
+  const innerH = H - PAD_T - PAD_B;
+  const stepX = innerW / Math.max(1, data.length - 1);
+  const yOf = (v) => PAD_T + innerH - ((v - min) / (max - min || 1)) * innerH;
+  const xOf = (i) => PAD_L + i * stepX;
+
+  const linePath = data
+    .map((v, i) => `${i === 0 ? 'M' : 'L'} ${xOf(i).toFixed(2)} ${yOf(v).toFixed(2)}`)
+    .join(' ');
+  const areaPath = `${linePath} L ${xOf(data.length - 1).toFixed(2)} ${(PAD_T + innerH).toFixed(2)} L ${xOf(0).toFixed(2)} ${(PAD_T + innerH).toFixed(2)} Z`;
+
+  // four y-axis ticks + bottom-axis ticks at month 1, every quarter, last
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(t => min + t * (max - min));
+  const xTickIdx = [0];
+  const everyMonths = Math.max(1, Math.round(data.length / 6));
+  for (let i = everyMonths; i < data.length - 1; i += everyMonths) xTickIdx.push(i);
+  xTickIdx.push(data.length - 1);
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ minWidth: 320 }}>
+        <defs>
+          <linearGradient id="burnGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="#f97316" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#f97316" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {yTicks.map((t, i) => (
+          <g key={`y${i}`}>
+            <line x1={PAD_L} x2={W - PAD_R} y1={yOf(t)} y2={yOf(t)} stroke="currentColor" className="text-gray-200 dark:text-gray-700" strokeWidth="1" />
+            <text x={PAD_L - 6} y={yOf(t) + 3} textAnchor="end" className="fill-gray-500 dark:fill-gray-400" style={{ fontSize: 9 }}>
+              {formatINRCompact(t)}
+            </text>
+          </g>
+        ))}
+        <path d={areaPath} fill="url(#burnGrad)" />
+        <path d={linePath} fill="none" stroke="#f97316" strokeWidth="2" />
+        {xTickIdx.map(i => (
+          <text key={`x${i}`} x={xOf(i)} y={H - 6} textAnchor="middle" className="fill-gray-500 dark:fill-gray-400" style={{ fontSize: 9 }}>
+            {`M${i + 1}`}
+          </text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+
 export default function Loan() {
   const { data: loans, add: addLoan, update: updateLoan, remove: removeLoan } = useCollection('loans', 'createdAt');
   const { data: demands, add: addDemand, update: updateDemand, remove: removeDemand } = useCollection('demands', 'createdAt');
@@ -118,6 +466,16 @@ export default function Loan() {
   const [actionState, setActionState] = useState(null); // { kind: 'ok'|'err', text }
   const [submitting, setSubmitting] = useState(false);
   const [recomputingId, setRecomputingId] = useState(null);
+
+  // Insights tab: which loan we're analysing + cached breakdown payload.
+  const [insightLoanId, setInsightLoanId] = useState(null);
+  const [insightData, setInsightData] = useState(null);   // result of calculateMonthlyBreakdown
+  const [insightError, setInsightError] = useState(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+  // Pre-EMI vs Full EMI simulator: cache scheduled scenarios.
+  const [simData, setSimData] = useState(null);
+  const [simLoading, setSimLoading] = useState(false);
+  const [simError, setSimError] = useState(null);
 
   const overview = useMemo(() => {
     const fc = flatCost || {};
@@ -291,7 +649,61 @@ export default function Loan() {
     { key: 'disbursements', label: 'Disbursements' },
     { key: 'demands', label: 'Demands' },
     { key: 'payments', label: 'Payments' },
+    { key: 'insights', label: 'Insights' },
   ];
+
+  // Default the insight loan to the first loan once data loads, so the
+  // Insights tab has something to show without forcing a manual selection.
+  useEffect(() => {
+    if (!insightLoanId && loans.length > 0) {
+      setInsightLoanId(loans[0].id);
+    }
+  }, [loans, insightLoanId]);
+
+  // Fetch the monthly breakdown whenever the user lands on Insights or
+  // changes the selected loan. Cached per loanId so re-tabbing is free.
+  useEffect(() => {
+    if (tab !== 'insights' || !insightLoanId) return;
+    let cancelled = false;
+    setInsightLoading(true);
+    setInsightError(null);
+    calculateMonthlyBreakdown({ loanId: insightLoanId })
+      .then(res => { if (!cancelled) setInsightData(res); })
+      .catch(err => { if (!cancelled) setInsightError(`${err.code || 'error'}: ${err.message}`); })
+      .finally(() => { if (!cancelled) setInsightLoading(false); });
+    return () => { cancelled = true; };
+  }, [tab, insightLoanId]);
+
+  // Run the Pre-EMI vs Full EMI simulation in parallel for the active loan.
+  // Two scheduled what-ifs on the same loan with the repaymentType swapped.
+  const runSimulation = async () => {
+    if (!insightLoanId) return;
+    setSimLoading(true);
+    setSimError(null);
+    try {
+      const [fullEmi, preEmi] = await Promise.all([
+        generateAmortizationSchedule({
+          loanId: insightLoanId,
+          overrides: { repaymentType: 'FULL_EMI' },
+        }),
+        generateAmortizationSchedule({
+          loanId: insightLoanId,
+          overrides: { repaymentType: 'PRE_EMI' },
+        }),
+      ]);
+      setSimData({ fullEmi, preEmi });
+    } catch (err) {
+      setSimError(`${err.code || 'error'}: ${err.message}`);
+    } finally {
+      setSimLoading(false);
+    }
+  };
+  // Auto-run the simulation the first time the user opens Insights for a
+  // given loan; clear it when the loan changes.
+  useEffect(() => {
+    setSimData(null);
+    setSimError(null);
+  }, [insightLoanId]);
 
   const fmtTimestamp = (ts) => {
     if (!ts) return '-';
@@ -303,6 +715,8 @@ export default function Loan() {
 
   return (
     <div className="space-y-4">
+      <NextPaymentAlert demands={demands} onView={() => setTab('demands')} />
+
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl overflow-x-auto">
         {subTabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
@@ -632,6 +1046,124 @@ export default function Loan() {
               <p className="text-[11px] text-gray-400 dark:text-gray-500 px-1">
                 Disbursements are saved through a Cloud Function that atomically updates the loan&apos;s disbursed total, EMI, Pre-EMI and outstanding balance. UTR is mandatory and globally unique.
               </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ========== INSIGHTS TAB ========== */}
+      {tab === 'insights' && (
+        <div className="space-y-3">
+          {loans.length === 0 ? (
+            <EmptyState icon={HiOutlineChartBar} message="Add a loan to see insights" />
+          ) : (
+            <>
+              {/* Loan picker (only shown when more than one loan exists) */}
+              {loans.length > 1 && (
+                <Card>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Analysing loan</label>
+                  <select
+                    value={insightLoanId || ''}
+                    onChange={e => setInsightLoanId(e.target.value)}
+                    className={inputCls}
+                  >
+                    {loans.map(l => (
+                      <option key={l.id} value={l.id}>
+                        {l.bankName} {l.loanAccountNumber ? `(${l.loanAccountNumber})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </Card>
+              )}
+
+              {insightLoading && (
+                <Card>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Crunching the numbers...</p>
+                </Card>
+              )}
+              {insightError && (
+                <Card>
+                  <div className="flex items-start gap-2 text-xs text-red-600 dark:text-red-400">
+                    <HiOutlineExclamationTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>{insightError}</span>
+                  </div>
+                </Card>
+              )}
+
+              {/* ----- Timeline ----- */}
+              <Card>
+                <div className="flex items-center gap-2 mb-3">
+                  <HiOutlineClock className="w-4 h-4 text-indigo-500" />
+                  <h3 className="text-sm font-semibold dark:text-white">Timeline</h3>
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">Stage {'\u2192'} Payment {'\u2192'} Disbursement</span>
+                </div>
+                <LoanTimeline
+                  demands={demands}
+                  payments={payments}
+                  disbursements={(disbursements || []).filter(d => !insightLoanId || d.loanId === insightLoanId)}
+                  fmtDate={fmtDate}
+                />
+              </Card>
+
+              {/* ----- Interest burn graph ----- */}
+              <Card>
+                <div className="flex items-center gap-2 mb-2">
+                  <HiOutlineFire className="w-4 h-4 text-orange-500" />
+                  <h3 className="text-sm font-semibold dark:text-white">Interest burn</h3>
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">monthly interest paid to the bank</span>
+                </div>
+                {insightData?.monthly?.interest?.length > 0 ? (
+                  <>
+                    <InterestBurnChart data={insightData.monthly.interest} />
+                    <div className="grid grid-cols-3 gap-2 mt-3 text-[11px]">
+                      <div className="rounded-lg bg-orange-50 dark:bg-orange-900/20 p-2">
+                        <p className="text-gray-500 dark:text-gray-400">First month</p>
+                        <p className="font-semibold text-orange-700 dark:text-orange-400">{formatINR(insightData.monthly.interest[0])}</p>
+                      </div>
+                      <div className="rounded-lg bg-orange-50 dark:bg-orange-900/20 p-2">
+                        <p className="text-gray-500 dark:text-gray-400">Total interest</p>
+                        <p className="font-semibold text-orange-700 dark:text-orange-400">{formatINRCompact(insightData.summary?.totalInterest || 0)}</p>
+                      </div>
+                      <div className="rounded-lg bg-orange-50 dark:bg-orange-900/20 p-2">
+                        <p className="text-gray-500 dark:text-gray-400">Avg / month</p>
+                        <p className="font-semibold text-orange-700 dark:text-orange-400">
+                          {formatINRCompact((insightData.summary?.totalInterest || 0) / Math.max(1, insightData.monthly.interest.length))}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  !insightLoading && <p className="text-[11px] text-gray-500 dark:text-gray-400">No schedule available yet. Set a sanction amount, interest rate and tenure on the loan.</p>
+                )}
+              </Card>
+
+              {/* ----- Pre-EMI vs Full EMI simulator ----- */}
+              <Card>
+                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <HiOutlineArrowsRightLeft className="w-4 h-4 text-indigo-500" />
+                    <h3 className="text-sm font-semibold dark:text-white">Simulate Pre-EMI vs Full EMI</h3>
+                  </div>
+                  <button
+                    onClick={runSimulation}
+                    disabled={simLoading || !insightLoanId}
+                    className="text-[11px] px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {simLoading ? 'Simulating...' : simData ? 'Re-run' : 'Run simulation'}
+                  </button>
+                </div>
+                {simError && (
+                  <p className="text-[11px] text-red-600 dark:text-red-400 mb-2">{simError}</p>
+                )}
+                {!simData && !simLoading && (
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    Compares total interest, monthly cash flow and final balance under each repayment mode for this loan&apos;s current disbursed amount.
+                  </p>
+                )}
+                {simData && (
+                  <ScenarioCompare full={simData.fullEmi} pre={simData.preEmi} />
+                )}
+              </Card>
             </>
           )}
         </div>
@@ -969,18 +1501,20 @@ export default function Loan() {
         </div>
       </Modal>
 
-      {/* Floating Add Button */}
-      <button
-        onClick={() => {
-          if (tab === 'loans') openAdd('loan', emptyLoan);
-          else if (tab === 'demands') openAdd('demand', emptyDemand);
-          else if (tab === 'disbursements') openAdd('disbursement', { ...emptyDisbursement, loanId: loans[0]?.id || '', disbursementDate: new Date().toISOString().slice(0, 10) });
-          else openAdd('payment', emptyPayment);
-        }}
-        className="fixed bottom-20 right-6 z-40 p-3.5 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 active:scale-95 transition-all"
-      >
-        <HiPlus className="w-6 h-6" />
-      </button>
+      {/* Floating Add Button - hidden on read-only tabs (Overview, Insights). */}
+      {tab !== 'overview' && tab !== 'insights' && (
+        <button
+          onClick={() => {
+            if (tab === 'loans') openAdd('loan', emptyLoan);
+            else if (tab === 'demands') openAdd('demand', emptyDemand);
+            else if (tab === 'disbursements') openAdd('disbursement', { ...emptyDisbursement, loanId: loans[0]?.id || '', disbursementDate: new Date().toISOString().slice(0, 10) });
+            else openAdd('payment', emptyPayment);
+          }}
+          className="fixed bottom-20 right-6 z-40 p-3.5 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 active:scale-95 transition-all"
+        >
+          <HiPlus className="w-6 h-6" />
+        </button>
+      )}
 
       <ConfirmDialog
         open={!!deleteConfirm}
